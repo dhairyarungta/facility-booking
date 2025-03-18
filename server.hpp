@@ -244,8 +244,8 @@ public:
                 continue;
             }
             std::cout << "Received: " << buffer << " from " << inet_ntoa(client_addr.sin_addr) << ":" << ntohs(client_addr.sin_port) << "\n";
-            char res[3] = "ACK";
-            sendto(sockfd, res, 3, 0, (struct sockaddr *)&client_addr, len);  //server sends ACK to client for at least once invocation semantics
+            char* res = "ACK";
+            sendto(sockfd, res, sizeof(res), 0, (struct sockaddr *)&client_addr, len);  //server sends ACK to client for at least once invocation semantics
             RequestMessage msg = unmarshal(buffer);
             ReplyMessage* reply = (ReplyMessage*) malloc(sizeof(ReplyMessage));
             switch (msg.op) {
