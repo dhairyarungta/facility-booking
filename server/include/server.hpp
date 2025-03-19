@@ -10,7 +10,7 @@
 #include <unistd.h>
 
 #define PORT 3000
-typedef std::pair<int, int> hourminute
+typedef std::pair<int, int> hourminute;
 typedef std::pair<hourminute, hourminute> bookStruct; //bookings are represented via {{startHour, StartMin}, {endHour, endMin}}
 
 enum Day {
@@ -21,7 +21,7 @@ enum Day {
     Friday,
     Saturday,
     Sunday,
-}
+};
 
 class Facility {
     std::string name;
@@ -66,7 +66,7 @@ public:
         std::unordered_map<enum Day, std::vector<bookStruct>> availabilities;
         for (auto day : days) {
             if (!reservations[day].size()) {
-                availabilities[day] = {{0, 0}, {23, 59}}
+                availabilities[day] = {{0, 0}, {23, 59}};
             }
             else {
                 auto it = reservations.begin();
@@ -128,7 +128,7 @@ struct RequestMessage {
     char startTime[4]; //times are represented as {1, 1, 5, 9} for 11:59
     char endTime[4];
     char offset[4]; //will act as monitoring interval in event of callback
-}
+};
 
 /*
     ERROR CODES:
@@ -138,14 +138,15 @@ struct RequestMessage {
     400 - INVALID confirmation ID
 
 */
+
 struct ReplyMessage {
-    char availabilities[][8]; //each availability as (start time, 4 chars)(endTime 4 chars)
+    char availabilities[8]; //each availability as (start time, 4 chars)(endTime 4 chars)
     char uid[8]; //8 byte confirmation ID given by server
     unsigned int numAvail; //number of availabilities
     unsigned int errorCode; //error code if revelant
     unsigned int capacity; //returns capacity, if relevant
     enum Day day; //particular day of interest
-}
+};
 
 
 
