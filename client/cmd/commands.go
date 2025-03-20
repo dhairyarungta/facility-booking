@@ -67,7 +67,7 @@ var UpdateBooking = &cobra.Command{
 			os.Exit(1)
 		}
 
-		fmt.Printf("Updating booking-id: %v, new start time: %v ",uid,start)
+		fmt.Printf("Updating booking-id: %v, new start time: %v \n",uid,start)
 	},
 }
 
@@ -84,7 +84,7 @@ var StartMonitoring = &cobra.Command{
 			os.Exit(1)
 		}
 
-		fmt.Println("Monitoring %v for %v ",facility,interval)
+		fmt.Printf("Monitoring %v for %v \n",facility,interval)
 
 	},
 
