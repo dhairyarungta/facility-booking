@@ -191,7 +191,8 @@ class Server {
     RequestMessage unmarshal(char data[sizeof(RequestMessage)]) {
         uint32_t uid = ntohl(data[0]);
         uint32_t days = ntohl(data[8]);
-        uint32_t op = ntohl(data[15]);
+        // uint32_t op = ntohl(data[15]); 
+        uint8_t op = data[15]; 
         uint32_t facilityName = ntohl(data[16]);
         uint32_t startTime = ntohl(data[20]);
         uint32_t endTime = ntohl(data[24]);
