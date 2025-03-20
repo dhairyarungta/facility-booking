@@ -2,7 +2,6 @@ package udp
 
 import (
 	"errors"
-	"io"
 	"net"
 	"time"
 
@@ -20,7 +19,7 @@ func NewUdpClient(hostAddr string) UdpClient {
 	}
 }
 
-func (client *UdpClient) sendMessage(message utils.NetworkMessage,timeout int ) ([]byte,error){
+func (client *UdpClient) sendMessage(message utils.NetworkMessage,timeout int, retransmission bool, maxRetries int) ([]byte,error){
 	conn, err := net.Dial("udp",client.hostAddr)
 	if err!=nil{
 		return nil, err
@@ -32,19 +31,32 @@ func (client *UdpClient) sendMessage(message utils.NetworkMessage,timeout int ) 
 		return nil,err
 	}
 
-	buf := make([]byte,1024)
-	_, err = conn.Write(data)
+	if(retransmission){
 
-	for {
-		_, err := conn.Read(buf)
-		if errors.Is(err,io.EOF){
-			break
+		ackBuf := make([]byte,3)
+		count := 0
+		for count < maxRetries{
+			_, err = conn.Write(data)
+			_,err := conn.Read(ackBuf)
+			if err!=nil{
+				return nil, err
+			}
+
+			if(string(ackBuf) == "ACK"){
+				break
+			}
+			count ++
 		}
 
-		if err !=nil{
-			return nil, err
+		if(count == maxRetries){
+			return nil, errors.New("reached max retries")
 		}
 	}
 
-	return buf, nil
+	buf := make([]byte,1024)
+	n, err := conn.Read(buf)
+	if err !=nil{
+		return nil, err
+	}
+	return buf[:n], nil
 }

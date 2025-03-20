@@ -178,7 +178,7 @@ class Server {
         memcpy(dataBegin, &availabilities, sizeof(availabilities));
         dataBegin += sizeof(availabilities); 
         memcpy(dataBegin, &uid, sizeof(uid));
-        dataBeign += sizeof(uid);
+        dataBegin += sizeof(uid);
         memcpy(dataBegin, &numAvail, sizeof(numAvail));
         dataBegin += sizeof(numAvail);
         memcpy(dataBegin, &errorCode, sizeof(errorCode));
@@ -250,6 +250,8 @@ public:
             sendto(sockfd, res, sizeof(res), 0, (struct sockaddr *)&client_addr, len);  //server sends ACK to client for at least once invocation semantics
             RequestMessage msg = unmarshal(buffer);
             ReplyMessage* reply = (ReplyMessage*) malloc(sizeof(ReplyMessage));
+
+            //plan maybe add a handler class here? handler class 
             switch (msg.op) {
                 case 'A' : {
                     std::string facility = std::string(msg.facilityName);
