@@ -56,13 +56,13 @@ public:
         std::unordered_map<enum Day, std::vector<bookStruct>> availabilities;
         for (auto day : days) {
             if (!reservations[day].size()) {
-                availabilities[day] = {{0, 0}, {23, 59}};
+                availabilities[day] = {{{0, 0}, {23, 59}}};
             }
             else {
-                auto it = reservations.begin();
+                auto it = reservations[day].begin();
                 bookStruct prev = *it;
                 it++;
-                while (it != reservations.end()) {
+                while (it != reservations[day].end()) {
                     hourminute startAvail = prev.second;
                     hourminute endAvail = it->first;
                     if (startAvail < endAvail) availabilities[day].push_back({startAvail, endAvail});
