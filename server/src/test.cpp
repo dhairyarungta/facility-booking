@@ -24,8 +24,8 @@ struct RequestMessage {
 
 //32 bytes
 struct ReplyMessage {
-    char availabilities[8]; //8 bytes
     char uid[8]; //8bytes
+    char availabilities[8]; //8 bytes
     unsigned int numAvail; //4 bytes
     unsigned int errorCode;  //4 bytes
     unsigned int capacity; //4 bytes
