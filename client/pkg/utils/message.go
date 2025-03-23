@@ -12,7 +12,7 @@ type NetworkMessage interface {
 	UnMarshal([]byte) (NetworkMessage,error)
 }
 
-type Day uint32
+type Day byte
 
 const (
 	Monday Day = iota
