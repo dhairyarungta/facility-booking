@@ -194,7 +194,7 @@ class Server {
         memcpy(dataBegin, &capacity, sizeof(capacity));
         dataBegin += sizeof(capacity);
 
-        memcpy(dataBegin, reply->day, sizeof(reply->day));
+        memcpy(dataBegin, &reply->day, sizeof(reply->day));
         return data;
     }
 
