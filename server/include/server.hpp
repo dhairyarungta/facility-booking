@@ -13,7 +13,7 @@
 typedef std::pair<int, int> hourminute;
 typedef std::pair<hourminute, hourminute> bookStruct; //bookings are represented via {{startHour, StartMin}, {endHour, endMin}}
 
-enum Day {
+enum Day : char {
     Monday,
     Tuesday,
     Wednesday,
