@@ -10,6 +10,8 @@
 #include <unistd.h>
 
 #define PORT 3000
+#define NUM_AVAIL 50 
+
 typedef std::pair<int, int> hourminute;
 typedef std::pair<hourminute, hourminute> bookStruct; //bookings are represented via {{startHour, StartMin}, {endHour, endMin}}
 
@@ -120,7 +122,7 @@ public:
     E - QUERY_CAP
     F - DELETE
 */
-struct RequestMessage {
+struct __attribute__ ((packed)) RequestMessage {
     char uid[8]; //8 byte confirmation UID
     enum Day days[7]; //at most 7 days of the week
     char op; //operation to perform
@@ -139,12 +141,14 @@ struct RequestMessage {
 
 */
 
-struct ReplyMessage {
-    char availabilities[8]; //each availability as (start time, 4 chars)(endTime 4 chars)
+
+// Sizeof(ReplyaMessage) = 421, with NUM_AVAIL = 50
+struct __attribute__ ((packed)) ReplyMessage {
+    char availabilities[NUM_AVAIL][8]; //each availability as (start time, 4 chars)(endTime 4 chars)
     char uid[8]; //8 byte confirmation ID given by server
-    unsigned int numAvail; //number of availabilities
-    unsigned int errorCode; //error code if revelant
-    unsigned int capacity; //returns capacity, if relevant
+    uint32_t numAvail; //number of availabilities
+    uint32_t errorCode; //error code if revelant
+    uint32_t capacity; //returns capacity, if relevant
     enum Day day; //particular day of interest
 };
 
@@ -164,48 +168,47 @@ class Server {
         time[6] = end.second / 10 + '0', time[7] = end.second % 10 + '0';
         return time;
     }
+
     char* marshal(ReplyMessage* reply) {
-        char* buf = (char*) malloc(sizeof(reply));
-        uint32_t availabilities = htonl(reply->availabilities);
-        uint32_t uid = htonl(reply->uid);
+
         uint32_t numAvail = htonl(reply->numAvail);
         uint32_t errorCode = htonl(reply->errorCode);
         uint32_t capacity = htonl(reply->capacity);
-        uint32_t day = htonl(reply->day);
 
-        char* data = (char*) malloc(sizeof(reply));
+        char* data = (char*) malloc (sizeof(ReplyMessage));
         char* dataBegin = data;
-        memcpy(dataBegin, &availabilities, sizeof(availabilities));
-        dataBegin += sizeof(availabilities); 
-        memcpy(dataBegin, &uid, sizeof(uid));
-        dataBegin += sizeof(uid);
+
+        assert (sizeof(reply->availabilities) == (NUM_AVAIL*8));
+        memcpy(dataBegin, reply->availabilities, sizeof(reply->availabilities));
+        dataBegin += sizeof(reply->availabilities); 
+
+        memcpy(dataBegin, reply->uid, sizeof(reply->uid));
+        dataBegin += sizeof(reply->uid);
+
         memcpy(dataBegin, &numAvail, sizeof(numAvail));
         dataBegin += sizeof(numAvail);
+
         memcpy(dataBegin, &errorCode, sizeof(errorCode));
         dataBegin += sizeof(errorCode);
+
         memcpy(dataBegin, &capacity, sizeof(capacity));
         dataBegin += sizeof(capacity);
-        memcpy(dataBegin, &day, sizeof(day));
+
+        memcpy(dataBegin, reply->day, sizeof(reply->day));
         return data;
     }
-    RequestMessage unmarshal(char data[sizeof(RequestMessage)]) {
-        uint32_t uid = ntohl(data[0]);
-        uint32_t days = ntohl(data[8]);
-        // uint32_t op = ntohl(data[15]); 
-        uint8_t op = data[15]; 
-        uint32_t facilityName = ntohl(data[16]);
-        uint32_t startTime = ntohl(data[20]);
-        uint32_t endTime = ntohl(data[24]);
-        uint32_t offset = ntohl(data[28]);
-        RequestMessage* msg = (RequestMessage*) malloc(sizeof(RequestMessage));
 
-        memcpy(msg->uid, &uid, sizeof(uid));
-        memcpy(msg->days, &days, sizeof(days));
-        memcpy(&msg->op, &op, sizeof(op));
-        memcpy(msg->facilityName, &facilityName, sizeof(facilityName));
-        memcpy(msg->startTime, &startTime, sizeof(startTime));
-        memcpy(msg->endTime, &endTime, sizeof(endTime));
-        memcpy(msg->offset, &offset, sizeof(offset));
+    RequestMessage unmarshal(char data[ sizeof(RequestMessage) ]) {
+
+        RequestMessage* msg = (RequestMessage*) malloc(sizeof(RequestMessage));
+        memcpy (msg, data, sizeof(RequestMessage));
+        // memcpy(msg->uid, data->uid, sizeof(data->uid));
+        // memcpy(msg->days, data->days, sizeof(data->days));
+        // memcpy(msg->op, data->op, sizeof(data->op));
+        // memcpy(msg->facilityName, data->facilityName, sizeof(data->facilityName));
+        // memcpy(msg->startTime, data->startTime, sizeof(data->startTime));
+        // memcpy(msg->endTime, data->endTime, sizeof(data->endTime));
+        // memcpy(msg->offset, data->offset, sizeof(data->offset));
         return *msg;
     }
 
