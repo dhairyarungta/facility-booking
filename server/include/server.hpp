@@ -11,10 +11,13 @@
 #include <cstring>    
 #include <arpa/inet.h>  
 #include <unistd.h>
+#include <string_view>
+#include <cstdlib>
 
 #define PORT 3000
 #define NUM_AVAIL 50 
-#define FACILITY_NAME_LEN 30 
+#define FACILITY_NAME_LEN 30
+#define BUFFER_LEN 10000 //need to define length of buffer as MarshalledMessage size is indeterminate 
 
 typedef std::pair<int, int> hourminute; // Time : {Hour, Minute}
 
@@ -27,7 +30,7 @@ enum class InvocationSemantics {
 };
 
 enum class Day : char {
-    Monday = 0,
+    Monday ='0',
     Tuesday,
     Wednesday,
     Thursday,
@@ -71,24 +74,68 @@ class Facility {
         int minute = time%60;
         return {hour, minute};
     }
-
-    hourminute updateTime(hourminute a, hourminute b, bool add) {
-        return add ? timestampToHour(hourToTimestamp(a)+hourToTimestamp(b)) 
-            : timestampToHour(hourToTimestamp(a)-hourToTimestamp(b));
+    Day decDay(Day day) {
+        switch (day) {
+            case Day::Tuesday : {
+                return Day::Monday;
+            }
+            case Day::Wednesday : {
+                return Day::Tuesday;
+            }
+            case Day::Thursday : {
+                return Day::Wednesday;
+            }
+            case Day::Friday : {
+                return Day::Thursday;
+            }
+            case Day::Saturday : {
+                return Day::Friday;
+            }
+            case Day::Sunday : {
+                return Day::Saturday;
+            }
+            default : {
+                return Day::Monday;
+            }
+        }
     }
-
+    Day incDay(Day day) {
+        switch (day) {
+            case Day::Monday : {
+                return Day::Tuesday;
+            }
+            case Day::Tuesday : {
+                return Day::Wednesday;
+            }
+            case Day::Wednesday : {
+                return Day::Thursday;
+            }
+            case Day::Thursday : {
+                return Day::Friday;
+            }
+            case Day::Friday : {
+                return Day::Saturday;
+            }
+            case Day::Saturday : {
+                return Day::Sunday;
+            }
+            default : {
+                return Day::Monday;
+            }
+        }
+    }
     bool isWellOrdered(bookStruct booking, Day day) {
         if (!reservations[day].size()) {
             return true;
         }
-        auto it = std::upper_bound(reservations[day].begin(), reservations[day].end(), bookTime);
+        auto it = std::upper_bound(reservations[day].begin(), reservations[day].end(), booking);
         while (it != reservations[day].begin()) {
-            if (it->second <= bookTime.first) {
+            if (it->second <= booking.first) {
                 return true;
             }
             it--;
         }
-        if (it->second <= bookTime.first) {
+        if (it->second <= booking.first) {
             return true;
         }
         return false;
@@ -98,26 +145,34 @@ public:
     Facility(std::string name, int capacity) : name(name), capacity(capacity) 
     { }
 
-    std::unordered_map< Day, std::vector<bookStruct> > bookingMap(std::vector<Day>& days) {
-        std::unordered_map< Day, std::vector<bookStruct> > availabilities;
+    std::vector<std::pair<Day, std::vector<hourminute>>> queryAvail(std::vector<Day>& days) {
+        std::vector<std::pair<Day, std::vector<hourminute>>> availabilities;
         for (auto day : days) {
             if (!reservations[day].size()) {
-                availabilities[day] = {{0, 0}, {23, 59}};
+                availabilities.push_back({day, {{0, 1439}}});
             }
             else {
-                auto it = reservations.begin();
+                std::vector<hourminute> avails;
+                auto it = reservations[day].begin();
                 bookStruct prev = *it;
-                it++;
-                while (it != reservations.end()) {
-                    hourminute startAvail = prev.second;
-                    hourminute endAvail = it->first;
-                    if (startAvail < endAvail) availabilities[day].push_back({startAvail, endAvail});
+                if (prev.first > std::make_pair(0, 0)) {
+                    avails.push_back({0, hourToTimestamp(prev.first)});
                 }
+                it++;
+                while (it != reservations[day].end()) {
+                    if (prev.second < it->first) {
+                        avails.push_back({hourToTimestamp(prev.second), hourToTimestamp(it->first)});
+                    }
+                    prev = *it;
+                    it++;
+                }
+                if (prev.second < std::make_pair(23, 59)) avails.push_back({hourToTimestamp(prev.second), 1439});
+                availabilities.push_back({day, avails});
             }
         }
         return availabilities;
     }
-    bool bookFacility (Day day, bookStruct bookTime) {
+    bool bookFacility(Day day, bookStruct bookTime) {
         // std::lock_guard<std::mutex> lock(mtx);
         if (isWellOrdered(bookTime, day)) {
             reservations[day].insert(bookTime);
@@ -126,10 +181,11 @@ public:
         return false;
         
     }
-    bool updateBooking (Day day, bookStruct booking, bool delay, hourminute offset) {
-        bookStruct updatedBooking = {updateTime(booking.first, offset, delay), updateTime(booking.second, offset, delay)};
+    bool updateBooking(Day day, bookStruct booking, int32_t offset) {
+        int startTime = hourToTimestamp(booking.first)+offset;
+        int endTime = hourToTimestamp(booking.second)+offset;
+        bookStruct updatedBooking = {timestampToHour(startTime), timestampToHour(endTime)};
         //can add additional logic for when offset forces day to spill over to next or previous
-
         if (isWellOrdered(updatedBooking, day)) {
             reservations[day].erase(booking);
             reservations[day].insert(updatedBooking);
@@ -172,6 +228,45 @@ public:
     107 - GET ALL FACILITY NAMES
     //payload len = 0
 */
+/*
+    Reply Message
+    ERROR CODES:
+    100 - OK
+    200 - INVALID Facility Name
+    300 - Facility completely or partially unavailable during requested period
+    400 - INVALID confirmation ID
+
+    OP TYPES:
+    101 - QUERY
+    numDays - 4 bytes, number of days in msg
+    INFO PER DAY
+    Day - 1 byte char (0-MON, 1-TUE...)
+    numAvail - 4 byte (number of availabilities pairs)
+    EACH availability given as :
+    startMinutes - 4 byte, starttime in minutes
+    endMinutes - 4 byte, endtime in minutes
+    ==================================================
+
+    102 - CREATE
+    There is no payload, only UID is returned
+    =========================================
+
+    103 - UPDATE
+    There is no payload, successful error code is the acknowledgement
+    =================================================================
+
+    104 - MONITOR
+    No payload, same as 103.
+    ========================
+
+    105 - QUERY_CAPACITY
+    capacity - 4 bytes
+    ==================
+
+    106 - DELETE
+    No payload. Only acknowledgement in form of error code.
+
+*/
 struct __attribute__ ((packed)) MarshalledMessage {
     uint32_t uid; //confirmation UID
     uint32_t op; //operation to perform
@@ -193,35 +288,17 @@ struct UnmarshalledRequestMessage {
     //otherwise update time in case update 
 }; 
 
-/*
-    ERROR CODES:
-    100 - OK
-    200 - INVALID Facility Name
-    300 - Facility completely or partially unavailable during requested period
-    400 - INVALID confirmation ID
-
-*/
-
-// struct __attribute__ ((packed)) ReplyMessage {
-//     uint32_t uid; //8 byte confirmation ID given by server
-//     uint32_t errorCode; //error code if revelant
-//     uint32_t payloadLen;
-//     char payload [];
-// }
-
 struct UnmarshalledReplyMessage {
     uint32_t uid; //confirmation ID given by server
-    uint32_t op; //operation to perform
+    uint32_t op; //operation that was performed
     uint32_t errorCode; //error code if revelant
     uint32_t capacity; //returns capacity, if relevant
     std::vector< std::string > facilityNames; // for op type '107'
-    std::vector< std::pair< Day, std::bitset<1440> > > availabilities;
-    // bitset represents the minutes of a day, for a particular facility
-    // 1 set bit means busy, 0 set bit means not busy 
+    std::vector<std::pair<Day, std::vector<hourminute>>> availabilities; 
 };
 
 
-typedef std::pair<std::pair<std::string, enum Day>, bookStruct> serverBooking; 
+typedef std::pair<std::pair<std::string, Day>, bookStruct> serverBooking; 
 //booking for (facility name, day, bookingTime)
 
 class Server {
@@ -231,20 +308,10 @@ class Server {
     std::unordered_map<uint32_t, serverBooking> bookings; 
     //uid, server booking
 
-    char* bookstructToTime(bookStruct a) {
-        char time[8];
-        hourminute start = a.first, end = a.second;
-        time[0] = start.first / 10 + '0', time[1] = start.first % 10 + '0';
-        time[2] = start.second / 10 + '0', time[3] = start.second % 10 + '0';
-        time[4] = end.first / 10 + '0', time[5] = end.first % 10 + '0';
-        time[6] = end.second / 10 + '0', time[7] = end.second % 10 + '0';
-        return time;
-    }
-
     void query_request_handle (UnmarshalledRequestMessage& msg, char* payload, 
         int payloadLen) {
         
-        uint32_t facilityNameLen = htonl(*reinterpret_cast< uint32_t* > (payload));
+        uint32_t facilityNameLen = ntohl(*reinterpret_cast< uint32_t* > (payload));
         std::string facilityName (reinterpret_cast< char* > (payload+4), facilityNameLen);
         msg.facilityName = std::move(facilityName);
     
@@ -258,26 +325,64 @@ class Server {
             payloadLen--;
         }
     }
-     
+    int getPayloadSize(UnmarshalledReplyMessage* msg) {
+        if (msg->errorCode != 100) return 0;
+        if (msg->op != 101) {
+            if (msg->op == 105) return 4;
+            return 0;
+        }
+        int size = 0;
+        size += sizeof(uint32_t); //numDays
+        for (auto val : msg->availabilities) {
+            size += sizeof(Day); //day
+            size += sizeof(uint32_t); //numAvail
+            size += 2*sizeof(uint32_t)*val.second.size();
+        }
+        return size;
+    }
+    void query_request_handle(UnmarshalledReplyMessage* msg, char* payload) {
+        int payloadIdx = 0;
+        uint32_t numDays = htonl(msg->availabilities.size());
+        memcpy(payload+payloadIdx, &numDays, sizeof(uint32_t));
+        payloadIdx += sizeof(uint32_t);
+        for (auto res : msg->availabilities) {
+            Day day = res.first;
+            memcpy(payload+payloadIdx, &day, sizeof(Day));
+            payloadIdx += sizeof(Day);
+            uint32_t numAvail = htonl(res.second.size());
+            memcpy(payload+payloadIdx, &numAvail, sizeof(uint32_t));
+            payloadIdx += sizeof(uint32_t);
+            for (auto time : res.second) {
+                uint32_t start = htonl(time.first);
+                uint32_t end = htonl(time.second);
+                memcpy(payload+payloadIdx, &start, sizeof(uint32_t));
+                payloadIdx += sizeof(uint32_t);
+                memcpy(payload+payloadIdx, &end, sizeof(uint32_t));
+                payloadIdx += sizeof(uint32_t);
+            }
+        }
+    }
     void query_capacity_handle (UnmarshalledRequestMessage& msg, char* payload, 
         int payloadLen) {
-            uint32_t facilityNameLen = htonl(*reinterpret_cast< uint32_t* >(payload));
+            uint32_t facilityNameLen = ntohl(*reinterpret_cast< uint32_t* >(payload));
             std::string facilityName (reinterpret_cast< char* >(payload+4), facilityNameLen);
             msg.facilityName = std::move(facilityName);
     }
-
+    void query_capacity_handle(UnmarshalledReplyMessage* msg, char* payload) {
+        uint32_t capacity = htonl(msg->capacity);
+        memcpy(payload, &capacity, sizeof(uint32_t));
+    }
     void monitor_handle (UnmarshalledRequestMessage& msg, char* payload, 
         int payloadLen) {
-            uint32_t facilityNameLen = htonl(*reinterpret_cast< uint32_t* >(payload));
+            uint32_t facilityNameLen = ntohl(*reinterpret_cast< uint32_t* >(payload));
             std::string facilityName (reinterpret_cast< char* >(payload+4), facilityNameLen);
             msg.facilityName = std::move(facilityName);
             //register callback
             //TODO 
     }
-
     void create_request_handle (UnmarshalledRequestMessage& msg, char* payload, 
         int payloadLen) {
-            uint32_t facilityNameLen = htonl(*reinterpret_cast< uint32_t* >(payload));
+            uint32_t facilityNameLen = ntohl(*reinterpret_cast< uint32_t* >(payload));
             std::string facilityName (reinterpret_cast< char* >(payload+4), facilityNameLen);
             msg.facilityName = std::move(facilityName);
 
@@ -298,42 +403,35 @@ class Server {
             msg.endTime = {std::stoi(end_hour), std::stoi(end_minute)};
 
     }
+    MarshalledMessage* marshal(UnmarshalledReplyMessage* msg) {
+        int size = getPayloadSize(msg);
+        MarshalledMessage* egressMsg = (MarshalledMessage*) malloc(sizeof(MarshalledMessage)+size);
+        uint32_t op = htonl(msg->errorCode);
+        if (msg->errorCode != 100) return egressMsg;
+        uint32_t uid = htonl(msg->uid);
+        egressMsg->op = op;
+        egressMsg->uid = uid;
+        switch (msg->op) {
+            case 101 : 
+                query_request_handle(msg, egressMsg->payload);
+                break;
+            case 105 :
+                query_capacity_handle(msg, egressMsg->payload);
+                break;
+            default :
+                //do nothing
+                break;
+        }
+        return egressMsg;
 
-    char* marshal(ReplyMessage* reply, int bufferSize) {
-
-        uint32_t numAvail = htonl(reply->uid);
-        uint32_t errorCode = htonl(reply->errorCode);
-        uint32_t payloadLen = htonl(reply->payloadLen);
-
-        char* data = (char*) malloc (bufferSize);
-        char* dataBegin = data;
-
-        // assert (sizeof(reply->availabilities) == (NUM_AVAIL*8));
-        // memcpy(dataBegin, reply->availabilities, sizeof(reply->availabilities));
-        // dataBegin += sizeof(reply->availabilities); 
-
-        // memcpy(dataBegin, numAvail, sizeof(uint32_t));
-        // dataBegin += sizeof(uint32_t);
-
-        memcpy(dataBegin, &numAvail, sizeof(uint32_t));
-        dataBegin += sizeof(uint32_t);
-
-        memcpy(dataBegin, &errorCode, sizeof(uint32_t));
-        dataBegin += sizeof(uint32_t);
-
-        memcpy(dataBegin, &payloadLen, sizeof(uint32_t));
-        dataBegin += sizeof(uint32_t);
-
-        memcpy(dataBegin, reply->payload, bufferSize - 3*sizeof(uint32_t)); 
-        return data;
     }
-
-    UnmarshalledRequestMessage unmarshal(MarshalledMessage* msg, int msgSize) {
+    
+    UnmarshalledRequestMessage unmarshal(MarshalledMessage* msg) {
 
         UnmarshalledRequestMessage localMsg;
-        localMsg.uid = htonl(msg->uid);
-        localMsg.op = htonl(msg->op);
-        uint32_t payloadLen = htonl(msg->payloadLen);
+        localMsg.uid = ntohl(msg->uid);
+        localMsg.op = ntohl(msg->op);
+        uint32_t payloadLen = ntohl(msg->payloadLen);
         
         int payloadIndex = 3*sizeof(uint32_t);
         
@@ -363,8 +461,6 @@ class Server {
                 // exit(1);
         }
         
-        memcpy (msg, data, sizeof(RequestMessage));
-
         // memcpy(msg->uid, data->uid, sizeof(data->uid));
         // memcpy(msg->days, data->days, sizeof(data->days));
         // memcpy(msg->op, data->op, sizeof(data->op));
@@ -377,9 +473,93 @@ class Server {
 
 public:
     Server(std::unordered_map<std::string, Facility>& facilities) : facilities(facilities) {}
+    void handleQuery(UnmarshalledRequestMessage& msg, UnmarshalledReplyMessage& replyMsg) {
+        replyMsg.op = 101;
+        std::vector<Day> days = msg.days;
+        std::string facilityName = msg.facilityName;
+        if (facilities.find(facilityName) == facilities.end()) {
+            replyMsg.errorCode = 200;
+            return;
+        }
+        Facility facility = facilities[facilityName];
+        replyMsg.availabilities = std::move(facility.queryAvail(days));
+        replyMsg.errorCode = 100;
+    }
+    void handleBooking(UnmarshalledRequestMessage& msg, UnmarshalledReplyMessage& replyMsg) {
+        replyMsg.op = 102;
+        Day day = msg.days[0];
+        std::string facilityName = msg.facilityName;
+        if (facilities.find(facilityName) == facilities.end()) {
+            replyMsg.errorCode = 200;
+            return;
+        }
+        Facility facility = facilities[facilityName];
+        hourminute startTime = msg.startTime;
+        hourminute endTime = msg.endTime;
+        bookStruct booking = {startTime, endTime};
+        bool success = facility.bookFacility(day, booking);
+        if (!success) {
+            replyMsg.errorCode = 300;
+            return;
+        }
+        //assign UID
+        uint32_t uid = abs(random());
+        replyMsg.uid = uid;
+        replyMsg.errorCode = 100;
+    }
+    void handleUpdate(UnmarshalledRequestMessage& msg, UnmarshalledReplyMessage& replyMsg) {
+        replyMsg.op = 103;
+        uint32_t uid = msg.uid;
+        if (bookings.find(uid) == bookings.end()) {
+            replyMsg.errorCode = 400;
+            return;
+        }
+        serverBooking booking = bookings[uid];
+        std::string facilityName = booking.first.first;
+        Day day = booking.first.second;
+        bookStruct time = booking.second;
+        Facility facility = facilities[facilityName];
+        int32_t offset = msg.offset;
+        bool success = facility.updateBooking(day, time, offset);
+        if (!success) {
+            replyMsg.errorCode = 400;
+            return;
+        }
+        replyMsg.errorCode = 100;
+        bookings[uid] = {{facilityName, day}, time};
+    }
+    void handleCallback(UnmarshalledRequestMessage& msg, UnmarshalledReplyMessage& replyMsg) {
+        //TODO: register callback for functions
+    }
+    void handleCapacity(UnmarshalledRequestMessage& msg, UnmarshalledReplyMessage& replyMsg) {
+        replyMsg.op = 105;
+        std::string facilityName = msg.facilityName;
+        if (facilities.find(facilityName) == facilities.end()) {
+            replyMsg.errorCode = 200;
+            return;
+        }
+        Facility facility = facilities[facilityName];
+        replyMsg.capacity = facility.queryCapacity();
+        replyMsg.errorCode = 100;
+    }
+    void handleDelete(UnmarshalledRequestMessage& msg, UnmarshalledReplyMessage& replyMsg) {
+        replyMsg.op = 106;
+        uint32_t uid = msg.uid;
+        if (bookings.find(uid) == bookings.end()) {
+            replyMsg.errorCode = 400;
+            return;
+        }
+        bookStruct time = bookings[uid].second;
+        Day day = bookings[uid].first.second;
+        std::string facilityName = bookings[uid].first.first;
+        Facility facility = facilities[facilityName];
+        facility.cancelBooking(time, day);
+        bookings.erase(uid);
+        replyMsg.errorCode = 100;
+    }
     void serve() {
         int sockfd;
-        char buffer[sizeof(RequestMessage)];
+        char buffer[BUFFER_LEN];
         struct sockaddr_in server_addr, client_addr;
 
         // Create UDP socket
@@ -406,7 +586,7 @@ public:
 
         while (true) {
             socklen_t len = sizeof(client_addr);
-            int n = recvfrom(sockfd, buffer, sizeof(RequestMessage), 0, (struct sockaddr *)&client_addr, &len);
+            int n = recvfrom(sockfd, buffer, BUFFER_LEN, 0, (struct sockaddr *)&client_addr, &len);
             if (n < 0) {
                 perror("Receive failed");
                 continue;
@@ -414,50 +594,42 @@ public:
             std::cout << "Received: " << buffer << " from " << inet_ntoa(client_addr.sin_addr) << ":" << ntohs(client_addr.sin_port) << "\n";
             char* res = "ACK";
             sendto(sockfd, res, sizeof(res), 0, (struct sockaddr *)&client_addr, len);  //server sends ACK to client for at least once invocation semantics
-            RequestMessage msg = unmarshal(buffer);
-            ReplyMessage* reply = (ReplyMessage*) malloc(sizeof(ReplyMessage));
+            MarshalledMessage* msg = reinterpret_cast<MarshalledMessage*>(buffer);
+            UnmarshalledRequestMessage localMsg = unmarshal(msg);
 
-            //plan maybe add a handler class here? handler class 
-            switch (msg.op) {
-                case 'A' : {
-                    std::string facility = std::string(msg.facilityName);
-                    if (facilities.find(facility) == facilities.end()) {
-                        ReplyMessage* reply = (ReplyMessage*) malloc(sizeof(ReplyMessage));
-                        reply->errorCode = 200;
-                        char data[sizeof(reply)] = marshal(reply);
-                        sendto(sockfd, data, sizeof(reply), 0, (struct sockaddr *)&client_addr, len);
-                    }
-                    else {
-                        Facility f = facilities[facility];
-                        std::vector<enum Day> days(msg.days);
-                        auto avails = f.bookingMap(days);
-                        char* data = (char*) malloc(days.size()*sizeof(ReplyMessage));
-                        int dataIndex = 0;
-                        for (auto day : avails) {
-                            ReplyMessage reply;
-                            reply.day = day;
-                            reply.errorCode = 100;
-                            reply.numAvail = avails[day].size();
-                            char** availabilities = (char**) malloc(8*numAvail);
-                            int index = 0;
-                            for (auto booking : avails[day]) {
-                                availabilities[index++] = bookstructToTime(booking);
-                            }
-                            reply.availabilities = availabilities;
-                            char* marshalledData = marshal(&reply);
-                            memcpy(data+dataIndex, marshalledData, sizeof(reply));
-                            dataIndex += sizeof(reply);
-                        }
-                        sendto(sockfd, data, days.size()*sizeof(reply), 0, (struct sockaddr *)&client_addr, len);
-                    }
-                }
-                case 'B' : {
-                    
-                }
+            //plan maybe add a handler class here? handler class
+            UnmarshalledReplyMessage localEgress; 
+            switch (msg->op) {
+                case 101 : 
+                    handleQuery(localMsg, localEgress);
+                    break;
+                case 102 : 
+                    handleBooking(localMsg, localEgress);
+                    //check success error code and insert callback reply
+                    break;
+                case 103 :
+                    handleUpdate(localMsg, localEgress);
+                    //check success error code and insert callback reply
+                    break;
+                case 104 :
+                    handleCallback(localMsg, localEgress);
+                    break;
+                case 105 :
+                    handleCapacity(localMsg, localEgress);
+                    return;
+                case 106 :
+                    handleDelete(localMsg, localEgress);
+                default :
+                    //do nothing
+                    break;
             }
             // Echo back the received message
-            sendto(sockfd, buffer, n, 0, (struct sockaddr *)&client_addr, len);
+            MarshalledMessage* egressMsg = marshal(&localEgress);
+            memcpy(buffer, egressMsg, sizeof(egressMsg));
+            sendto(sockfd, buffer, sizeof(egressMsg), 0, (struct sockaddr *)&client_addr, len);
         }
     }
 
-}
+};
+
+
