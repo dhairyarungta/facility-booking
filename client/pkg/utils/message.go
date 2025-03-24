@@ -24,6 +24,12 @@ const (
 	Sunday    Day = 6
 )
 
+type MarshalledMessage {
+	Uid uint32
+	Op uint32
+	PayLoadLen uint32
+}
+
 type Request struct {
 	Uid [8]byte
 	Days [7]Day
