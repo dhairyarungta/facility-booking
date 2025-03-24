@@ -1,4 +1,7 @@
 #include <string>
+#include <cassert>
+#include <iostream>
+#include <string_view>
 #include <vector>
 #include <set>
 #include <utility>
@@ -11,41 +14,70 @@
 
 #define PORT 3000
 #define NUM_AVAIL 50 
+#define FACILITY_NAME_LEN 30 
 
-typedef std::pair<int, int> hourminute;
-typedef std::pair<hourminute, hourminute> bookStruct; //bookings are represented via {{startHour, StartMin}, {endHour, endMin}}
+typedef std::pair<int, int> hourminute; // Time : {Hour, Minute}
 
-enum Day : char {
-    Monday,
+typedef std::pair<hourminute, hourminute> bookStruct; 
+//bookings are represented via {{startHour, StartMin}, {endHour, endMin}}
+
+enum class InvocationSemantics {
+    AT_LEAST_ONCE,
+    AT_MOST_ONCE
+};
+
+enum class Day : char {
+    Monday = 0,
     Tuesday,
     Wednesday,
     Thursday,
     Friday,
     Saturday,
-    Sunday,
+    Sunday
+};
+
+InvocationSemantics stringToInvocationSemantics (std::string s) {
+    if ( s == std::string_view{"AT_LEAST_ONCE"} ) {
+        return InvocationSemantics::AT_LEAST_ONCE;
+    }
+    else if ( s == std::string_view{"AT_MOST_ONCE"} ) {
+        return InvocationSemantics::AT_MOST_ONCE;
+    }
+    else {
+        std::cerr << "Wrong or no invocation semantics provided";
+        exit(1);
+    }
+}
+
+auto compareBookStruct = [](const bookStruct& a, const bookStruct& b) {
+    return (a.second <= b.first);  
 };
 
 class Facility {
     std::string name;
-    std::mutex mtx;
+    // std::mutex mtx;
     int capacity;
-    std::unordered_map<enum Day, std::set<bookStruct, [](const bookStruct& a, const bookStruct& b) {
-        if (a.second <= b.first) return true;
-        return false;
-    }>> reservations; //a reservation is of form (1200)
+    std::unordered_map< Day, 
+        std::set<bookStruct, decltype(compareBookStruct)> > reservations; 
+    //Day and the reservations for that day (for one facility)
+    //a reservation is of form (1200)
 
     int hourToTimestamp(hourminute time) {
         return 60*time.first + time.second;
     }
+
     hourminute timestampToHour(int time) {
-        int hour = time.first/60, minute = time.second%60;
+        int hour = time/60;
+        int minute = time%60;
         return {hour, minute};
     }
-    hourminute updateTime(hourminute a, hourminute b, bool add) {
-        return add ? timestampToHour(hourToTimestamp(a)+hourToTimestamp(b)) : timestampToHour(hourToTimestamp(a)-hourToTimestamp(b));
 
+    hourminute updateTime(hourminute a, hourminute b, bool add) {
+        return add ? timestampToHour(hourToTimestamp(a)+hourToTimestamp(b)) 
+            : timestampToHour(hourToTimestamp(a)-hourToTimestamp(b));
     }
-    bool isWellOrdered(bookStruct booking, enum Day day) {
+
+    bool isWellOrdered(bookStruct booking, Day day) {
         if (!reservations[day].size()) {
             return true;
         }
@@ -61,11 +93,13 @@ class Facility {
         }
         return false;
     }
+
 public:
-    Facility(std::string name) : name(name), capacity(capacity) {}
-    std::unordered_map<enum Day, std::vector<bookStruct>> queryAvailability(std::vector<enum Day>& days) {
-        std::lock_guard<std::mutex> lock(mtx);
-        std::unordered_map<enum Day, std::vector<bookStruct>> availabilities;
+    Facility(std::string name, int capacity) : name(name), capacity(capacity) 
+    { }
+
+    std::unordered_map< Day, std::vector<bookStruct> > bookingMap(std::vector<Day>& days) {
+        std::unordered_map< Day, std::vector<bookStruct> > availabilities;
         for (auto day : days) {
             if (!reservations[day].size()) {
                 availabilities[day] = {{0, 0}, {23, 59}};
@@ -83,8 +117,8 @@ public:
         }
         return availabilities;
     }
-    bool bookFacility(enum Day day, bookStruct bookTime) {
-        std::lock_guard<std::mutex> lock(mtx);
+    bool bookFacility (Day day, bookStruct bookTime) {
+        // std::lock_guard<std::mutex> lock(mtx);
         if (isWellOrdered(bookTime, day)) {
             reservations[day].insert(bookTime);
             return true;
@@ -92,10 +126,10 @@ public:
         return false;
         
     }
-    bool updateBooking(enum Day day, bookStruct booking, bool delay, hourminute offset) {
-        std::lock_guard<std::mutex> lock(mtx);
+    bool updateBooking (Day day, bookStruct booking, bool delay, hourminute offset) {
         bookStruct updatedBooking = {updateTime(booking.first, offset, delay), updateTime(booking.second, offset, delay)};
         //can add additional logic for when offset forces day to spill over to next or previous
+
         if (isWellOrdered(updatedBooking, day)) {
             reservations[day].erase(booking);
             reservations[day].insert(updatedBooking);
@@ -106,31 +140,58 @@ public:
     int queryCapacity() {
         return capacity; //idempotent service
     }
-    bool cancelBooking(bookStruct bookTime, enum Day day) {
+    bool cancelBooking(bookStruct bookTime, Day day) {
         //non-idempotent service, server side occurs via confirmation ID
         if (!reservations[day].contains(bookTime)) return false;
         reservations[day].erase(bookTime);
         return true;
     }
-}
-/*
-    OP TYPES:
-    A - QUERY
-    B - CREATE
-    C - UPDATE
-    D - MONITOR
-    E - QUERY_CAP
-    F - DELETE
-*/
-struct __attribute__ ((packed)) RequestMessage {
-    char uid[8]; //8 byte confirmation UID
-    enum Day days[7]; //at most 7 days of the week
-    char op; //operation to perform
-    char facilityName[4]; //4 bytes for character array - alignment constraint
-    char startTime[4]; //times are represented as {1, 1, 5, 9} for 11:59
-    char endTime[4];
-    char offset[4]; //will act as monitoring interval in event of callback
 };
+
+/*
+    Request Message
+    OP TYPES:
+    101 - QUERY
+    //facility name length (uint32_t), facility name (char), non '\0' ending
+    // days to query for single byte for each, 0 = Monday, 1 = Tuesday  ....
+
+    102 - CREATE
+    //facility name length (uint32_t), facility name (char), non '\0' ending
+    //single byte for day of booking as a eg 0 for monday
+    // 4 bytes for start time, eg: times are represented as {1, 1, 0, 9} for 11:09
+    // 4 bytes for end time 
+
+    103 - UPDATE
+    104 - MONITOR
+
+    105 - QUERY_CAPACITY
+    //facility name length (uint32_t), facility name (char), non '\0' ending
+
+    106 - DELETE/CANCEL 
+
+    107 - GET ALL FACILITY NAMES
+    //payload len = 0
+*/
+struct __attribute__ ((packed)) MarshalledMessage {
+    uint32_t uid; //confirmation UID
+    uint32_t op; //operation to perform
+    uint32_t payloadLen;
+    char payload [];
+};
+
+struct UnmarshalledRequestMessage {
+    uint32_t uid; //confirmation id
+    uint32_t op; //operation to perform
+    std::vector<Day> days; //at most 7 days of the week
+    std::string facilityName ;
+    hourminute startTime; //times are represented as {1 1, 59} for 11:59
+    hourminute endTime;
+
+    int32_t offset; 
+    //signed, in minutes
+    //monitoring interval for a callback (max over a week)
+    //otherwise update time in case update 
+}; 
 
 /*
     ERROR CODES:
@@ -141,23 +202,34 @@ struct __attribute__ ((packed)) RequestMessage {
 
 */
 
+// struct __attribute__ ((packed)) ReplyMessage {
+//     uint32_t uid; //8 byte confirmation ID given by server
+//     uint32_t errorCode; //error code if revelant
+//     uint32_t payloadLen;
+//     char payload [];
+// }
 
-// Sizeof(ReplyaMessage) = 421, with NUM_AVAIL = 50
-struct __attribute__ ((packed)) ReplyMessage {
-    char availabilities[NUM_AVAIL][8]; //each availability as (start time, 4 chars)(endTime 4 chars)
-    char uid[8]; //8 byte confirmation ID given by server
-    uint32_t numAvail; //number of availabilities
+struct UnmarshalledReplyMessage {
+    uint32_t uid; //confirmation ID given by server
+    uint32_t op; //operation to perform
     uint32_t errorCode; //error code if revelant
     uint32_t capacity; //returns capacity, if relevant
-    enum Day day; //particular day of interest
+    std::vector< std::string > facilityNames; // for op type '107'
+    std::vector< std::pair< Day, std::bitset<1440> > > availabilities;
+    // bitset represents the minutes of a day, for a particular facility
+    // 1 set bit means busy, 0 set bit means not busy 
 };
 
 
+typedef std::pair<std::pair<std::string, enum Day>, bookStruct> serverBooking; 
+//booking for (facility name, day, bookingTime)
 
-typedef std::pair<std::pair<std::string, enum Day>, bookStruct> serverBooking; //booking for (facility name, day, bookingTime)
 class Server {
     std::unordered_map<std::string, Facility> facilities;
-    std::unordered_map<std::string, serverBooking> bookings; //by confirmationID
+    // facility name, facility
+
+    std::unordered_map<uint32_t, serverBooking> bookings; 
+    //uid, server booking
 
     char* bookstructToTime(bookStruct a) {
         char time[8];
@@ -169,39 +241,130 @@ class Server {
         return time;
     }
 
-    char* marshal(ReplyMessage* reply) {
+    void query_request_handle (UnmarshalledRequestMessage& msg, char* payload, 
+        int payloadLen) {
+        
+        uint32_t facilityNameLen = htonl(*reinterpret_cast< uint32_t* > (payload));
+        std::string facilityName (reinterpret_cast< char* > (payload+4), facilityNameLen);
+        msg.facilityName = std::move(facilityName);
+    
+        payload = payload + 4 + facilityNameLen;
+        payloadLen = payloadLen - 4 - facilityNameLen; 
 
-        uint32_t numAvail = htonl(reply->numAvail);
+        while (payloadLen != 0) {
+            char c = *(reinterpret_cast< char* > (payload));
+            msg.days.push_back(static_cast<Day>(c));
+            payload++;
+            payloadLen--;
+        }
+    }
+     
+    void query_capacity_handle (UnmarshalledRequestMessage& msg, char* payload, 
+        int payloadLen) {
+            uint32_t facilityNameLen = htonl(*reinterpret_cast< uint32_t* >(payload));
+            std::string facilityName (reinterpret_cast< char* >(payload+4), facilityNameLen);
+            msg.facilityName = std::move(facilityName);
+    }
+
+    void monitor_handle (UnmarshalledRequestMessage& msg, char* payload, 
+        int payloadLen) {
+            uint32_t facilityNameLen = htonl(*reinterpret_cast< uint32_t* >(payload));
+            std::string facilityName (reinterpret_cast< char* >(payload+4), facilityNameLen);
+            msg.facilityName = std::move(facilityName);
+            //register callback
+            //TODO 
+    }
+
+    void create_request_handle (UnmarshalledRequestMessage& msg, char* payload, 
+        int payloadLen) {
+            uint32_t facilityNameLen = htonl(*reinterpret_cast< uint32_t* >(payload));
+            std::string facilityName (reinterpret_cast< char* >(payload+4), facilityNameLen);
+            msg.facilityName = std::move(facilityName);
+
+            payload = payload + 4 + facilityNameLen;
+            payloadLen = payloadLen - 4 - facilityNameLen; 
+
+            char c = *(reinterpret_cast< char* > (payload));
+            msg.days.push_back(static_cast<Day>(c)); 
+            payload++;
+            payloadLen--; 
+
+            assert(payloadLen == 8); // 4 bytes : start time, 4 bytes : end time
+            std::string start_hour (reinterpret_cast< char* >(payload), 2);
+            std::string start_minute (reinterpret_cast< char* >(payload+2), 2);
+            msg.startTime = {std::stoi(start_hour), std::stoi(start_minute)};
+            std::string end_hour (reinterpret_cast< char* >(payload+4), 2); 
+            std::string end_minute (reinterpret_cast< char* >(payload+6), 2); 
+            msg.endTime = {std::stoi(end_hour), std::stoi(end_minute)};
+
+    }
+
+    char* marshal(ReplyMessage* reply, int bufferSize) {
+
+        uint32_t numAvail = htonl(reply->uid);
         uint32_t errorCode = htonl(reply->errorCode);
-        uint32_t capacity = htonl(reply->capacity);
+        uint32_t payloadLen = htonl(reply->payloadLen);
 
-        char* data = (char*) malloc (sizeof(ReplyMessage));
+        char* data = (char*) malloc (bufferSize);
         char* dataBegin = data;
 
-        assert (sizeof(reply->availabilities) == (NUM_AVAIL*8));
-        memcpy(dataBegin, reply->availabilities, sizeof(reply->availabilities));
-        dataBegin += sizeof(reply->availabilities); 
+        // assert (sizeof(reply->availabilities) == (NUM_AVAIL*8));
+        // memcpy(dataBegin, reply->availabilities, sizeof(reply->availabilities));
+        // dataBegin += sizeof(reply->availabilities); 
 
-        memcpy(dataBegin, reply->uid, sizeof(reply->uid));
-        dataBegin += sizeof(reply->uid);
+        // memcpy(dataBegin, numAvail, sizeof(uint32_t));
+        // dataBegin += sizeof(uint32_t);
 
-        memcpy(dataBegin, &numAvail, sizeof(numAvail));
-        dataBegin += sizeof(numAvail);
+        memcpy(dataBegin, &numAvail, sizeof(uint32_t));
+        dataBegin += sizeof(uint32_t);
 
-        memcpy(dataBegin, &errorCode, sizeof(errorCode));
-        dataBegin += sizeof(errorCode);
+        memcpy(dataBegin, &errorCode, sizeof(uint32_t));
+        dataBegin += sizeof(uint32_t);
 
-        memcpy(dataBegin, &capacity, sizeof(capacity));
-        dataBegin += sizeof(capacity);
+        memcpy(dataBegin, &payloadLen, sizeof(uint32_t));
+        dataBegin += sizeof(uint32_t);
 
-        memcpy(dataBegin, &reply->day, sizeof(reply->day));
+        memcpy(dataBegin, reply->payload, bufferSize - 3*sizeof(uint32_t)); 
         return data;
     }
 
-    RequestMessage unmarshal(char data[ sizeof(RequestMessage) ]) {
+    UnmarshalledRequestMessage unmarshal(MarshalledMessage* msg, int msgSize) {
 
-        RequestMessage* msg = (RequestMessage*) malloc(sizeof(RequestMessage));
+        UnmarshalledRequestMessage localMsg;
+        localMsg.uid = htonl(msg->uid);
+        localMsg.op = htonl(msg->op);
+        uint32_t payloadLen = htonl(msg->payloadLen);
+        
+        int payloadIndex = 3*sizeof(uint32_t);
+        
+        switch (localMsg.uid) {
+            case 101:
+                query_request_handle(localMsg, msg->payload, payloadLen);
+                break;
+            case 102:
+                create_request_handle(localMsg, msg->payload, payloadLen);
+                break;
+            case 103:
+                break;
+            case 104:
+                monitor_handle(localMsg, msg->payload, payloadLen);
+                break;
+            case 105:
+                query_capacity_handle(localMsg, msg->payload, payloadLen);
+                break;
+            case 106:
+                break;
+            case 107:
+                // No need to modify the unmarshalled request msg
+                break;
+            default:
+                std::cerr << "wrong op type";
+                // handle error
+                // exit(1);
+        }
+        
         memcpy (msg, data, sizeof(RequestMessage));
+
         // memcpy(msg->uid, data->uid, sizeof(data->uid));
         // memcpy(msg->days, data->days, sizeof(data->days));
         // memcpy(msg->op, data->op, sizeof(data->op));
@@ -209,7 +372,7 @@ class Server {
         // memcpy(msg->startTime, data->startTime, sizeof(data->startTime));
         // memcpy(msg->endTime, data->endTime, sizeof(data->endTime));
         // memcpy(msg->offset, data->offset, sizeof(data->offset));
-        return *msg;
+        return localMsg;
     }
 
 public:
@@ -267,7 +430,7 @@ public:
                     else {
                         Facility f = facilities[facility];
                         std::vector<enum Day> days(msg.days);
-                        auto avails = f.queryAvailability(days);
+                        auto avails = f.bookingMap(days);
                         char* data = (char*) malloc(days.size()*sizeof(ReplyMessage));
                         int dataIndex = 0;
                         for (auto day : avails) {
