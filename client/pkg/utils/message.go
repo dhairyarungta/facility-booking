@@ -15,13 +15,13 @@ type NetworkMessage interface {
 type Day byte
 
 const (
-	Monday Day = iota
-	Tuesday
-	Wednesday
-	Thursday
-	Friday
-	Saturday
-	Sunday
+	Monday    Day = 0
+	Tuesday   Day = 1
+	Wednesday Day = 2
+	Thursday  Day = 3
+	Friday    Day = 4
+	Saturday  Day = 5
+	Sunday    Day = 6
 )
 
 type Request struct {
