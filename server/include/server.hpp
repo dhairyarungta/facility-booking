@@ -268,6 +268,7 @@ public:
 
 */
 struct __attribute__ ((packed)) MarshalledMessage {
+    uint32_t reqID; //request ID
     uint32_t uid; //confirmation UID
     uint32_t op; //operation to perform
     uint32_t payloadLen;
@@ -275,6 +276,7 @@ struct __attribute__ ((packed)) MarshalledMessage {
 };
 
 struct UnmarshalledRequestMessage {
+    uint32_t reqID;
     uint32_t uid; //confirmation id
     uint32_t op; //operation to perform
     std::vector<Day> days; //at most 7 days of the week
@@ -307,6 +309,12 @@ class Server {
 
     std::unordered_map<uint32_t, serverBooking> bookings; 
     //uid, server booking
+
+    InvocationSemantics semantics;
+    //invocation semantics to use
+
+    std::unordered_map<uint32_t, UnmarshalledReplyMessage> replyCache;
+    //reply cache for t most once semantics
 
     void query_request_handle (UnmarshalledRequestMessage& msg, char* payload, 
         int payloadLen) {
@@ -429,6 +437,7 @@ class Server {
     UnmarshalledRequestMessage unmarshal(MarshalledMessage* msg) {
 
         UnmarshalledRequestMessage localMsg;
+        localMsg.reqID = ntohl(msg->reqID);
         localMsg.uid = ntohl(msg->uid);
         localMsg.op = ntohl(msg->op);
         uint32_t payloadLen = ntohl(msg->payloadLen);
@@ -472,7 +481,7 @@ class Server {
     }
 
 public:
-    Server(std::unordered_map<std::string, Facility>& facilities) : facilities(facilities) {}
+    Server(std::unordered_map<std::string, Facility>& facilities, InvocationSemantics semantics) : facilities(facilities), semantics(semantics) {}
     void handleQuery(UnmarshalledRequestMessage& msg, UnmarshalledReplyMessage& replyMsg) {
         replyMsg.op = 101;
         std::vector<Day> days = msg.days;
@@ -598,32 +607,40 @@ public:
             UnmarshalledRequestMessage localMsg = unmarshal(msg);
 
             //plan maybe add a handler class here? handler class
-            UnmarshalledReplyMessage localEgress; 
-            switch (msg->op) {
-                case 101 : 
-                    handleQuery(localMsg, localEgress);
-                    break;
-                case 102 : 
-                    handleBooking(localMsg, localEgress);
-                    //check success error code and insert callback reply
-                    break;
-                case 103 :
-                    handleUpdate(localMsg, localEgress);
-                    //check success error code and insert callback reply
-                    break;
-                case 104 :
-                    handleCallback(localMsg, localEgress);
-                    break;
-                case 105 :
-                    handleCapacity(localMsg, localEgress);
-                    return;
-                case 106 :
-                    handleDelete(localMsg, localEgress);
-                default :
-                    //do nothing
-                    break;
+            UnmarshalledReplyMessage localEgress;
+            if (replyCache.find(localMsg.reqID) == replyCache.end() || semantics == InvocationSemantics::AT_LEAST_ONCE) {
+                switch (msg->op) {
+                    case 101 : 
+                        handleQuery(localMsg, localEgress);
+                        break;
+                    case 102 : 
+                        handleBooking(localMsg, localEgress);
+                        //check success error code and insert callback reply
+                        break;
+                    case 103 :
+                        handleUpdate(localMsg, localEgress);
+                        //check success error code and insert callback reply
+                        break;
+                    case 104 :
+                        handleCallback(localMsg, localEgress);
+                        break;
+                    case 105 :
+                        handleCapacity(localMsg, localEgress);
+                        return;
+                    case 106 :
+                        handleDelete(localMsg, localEgress);
+                    default :
+                        //do nothing
+                        break;
+                }
+            }
+            else {
+                localEgress = replyCache[localMsg.reqID];
             }
             // Echo back the received message
+            if (semantics == InvocationSemantics::AT_MOST_ONCE) {
+                replyCache[localMsg.reqID] = localEgress; //cache the reply for AT MOST ONCE
+            }
             MarshalledMessage* egressMsg = marshal(&localEgress);
             memcpy(buffer, egressMsg, sizeof(egressMsg));
             sendto(sockfd, buffer, sizeof(egressMsg), 0, (struct sockaddr *)&client_addr, len);
