@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <string_view>
 #include <cstdlib>
+#include <iostream>
 
 #define TESTMODE 1
 #define PORT 3000
@@ -31,7 +32,7 @@ enum class InvocationSemantics {
 };
 
 enum class Day : char {
-    Monday ='0',
+    Monday = '0',
     Tuesday,
     Wednesday,
     Thursday,
@@ -145,6 +146,8 @@ class Facility {
 public:
     Facility(std::string name, int capacity) : name(name), capacity(capacity) 
     { }
+
+    Facility() : name(""), capacity(0){};
 
     std::vector<std::pair<Day, std::vector<hourminute>>> queryAvail(std::vector<Day>& days) {
         std::vector<std::pair<Day, std::vector<hourminute>>> availabilities;
@@ -293,6 +296,7 @@ struct UnmarshalledRequestMessage {
 }; 
 
 struct UnmarshalledReplyMessage {
+    uint32_t reqID; //field for testing to remove later
     uint32_t uid; //confirmation ID given by server
     uint32_t op; //operation that was performed
     uint32_t errorCode; //error code if revelant
@@ -350,7 +354,7 @@ class Server {
         }
         return size;
     }
-    void query_request_handle(UnmarshalledReplyMessage* msg, char* payload) {
+    void query_request_handle(UnmarshalledReplyMessage* msg, char* payload, uint32_t* payloadLen) {
         int payloadIdx = 0;
         uint32_t numDays = htonl(msg->availabilities.size());
         memcpy(payload+payloadIdx, &numDays, sizeof(uint32_t));
@@ -371,6 +375,8 @@ class Server {
                 payloadIdx += sizeof(uint32_t);
             }
         }
+        *payloadLen = htonl(payloadIdx);
+        
     }
     void query_capacity_handle (UnmarshalledRequestMessage& msg, char* payload, 
         int payloadLen) {
@@ -416,14 +422,16 @@ class Server {
     MarshalledMessage* marshal(UnmarshalledReplyMessage* msg) {
         int size = getPayloadSize(msg);
         MarshalledMessage* egressMsg = (MarshalledMessage*) malloc(sizeof(MarshalledMessage)+size);
-        uint32_t op = htonl(msg->errorCode);
+        uint32_t op = htonl(msg->op);
         uint32_t uid = htonl(msg->uid);
+        uint32_t reqId = htonl(msg->reqID);
         egressMsg->op = op;
         egressMsg->uid = uid;
+        egressMsg->reqID = reqId;
         if (msg->errorCode != 100) return egressMsg;
         switch (msg->op) {
             case 101 : 
-                query_request_handle(msg, egressMsg->payload);
+                query_request_handle(msg, egressMsg->payload,&egressMsg->payloadLen);
                 break;
             case 105 :
                 query_capacity_handle(msg, egressMsg->payload);
@@ -575,11 +583,17 @@ public:
         switch (msg.op)
         {
         case 101:
+            std::cout << msg.facilityName << std::endl;
+            
+            std::cout << char(msg.days[0]) << std::endl;
+            std::cout << char(msg.days[1]) << std::endl;
+            std::cout << char(msg.days[2]) << std::endl;
             assert((
             msg.facilityName == "test" 
             && msg.days == std::vector<Day>{Day::Monday,Day::Tuesday,Day::Wednesday}
             ) && "101 unmarshalled request not correct");
 
+            replyMsg.reqID = msg.reqID;
             replyMsg.op = 101;
             replyMsg.uid = msg.uid;
             replyMsg.errorCode = 100;
@@ -593,7 +607,9 @@ public:
                     }
                 }
             };
+
             break;
+
         case 102:
             assert((
                 msg.facilityName == "test"
@@ -604,6 +620,7 @@ public:
                 && msg.endTime == hourminute{11,59}
             ) && "op 102 unmarshalled request not correct");
 
+            replyMsg.reqID = msg.reqID;
             replyMsg.op = msg.op;
             replyMsg.errorCode = 100;
             replyMsg.uid = msg.uid;
@@ -612,6 +629,8 @@ public:
             assert((
                 msg.facilityName == "test"
             ) && "op 105 unmarshalled request not correct");
+
+            replyMsg.reqID = msg.reqID;
             replyMsg.op = msg.op;
             replyMsg.uid = msg.op; 
             replyMsg.errorCode = 100;
@@ -701,9 +720,14 @@ public:
             if ( !TESTMODE && semantics == InvocationSemantics::AT_MOST_ONCE) {
                 replyCache[localMsg.reqID] = localEgress; //cache the reply for AT MOST ONCE
             }
+
+            assert(localEgress.op == 101 && localEgress.reqID == 1 && localEgress.uid == 1 && "failed to parse");
             MarshalledMessage* egressMsg = marshal(&localEgress);
-            memcpy(buffer, egressMsg, sizeof(egressMsg));
-            sendto(sockfd, buffer, sizeof(egressMsg), 0, (struct sockaddr *)&client_addr, len);
+            assert(egressMsg->op == htonl(101) && egressMsg->reqID == htonl(1) && egressMsg->uid == htonl(1) && "failed to marshal");
+            assert(sizeof(*egressMsg) >= 16 && "failed to assert size of egress msg");
+            memcpy(buffer, egressMsg, sizeof(*egressMsg) + ntohl(egressMsg->payloadLen));
+            std::cout << ntohl(egressMsg->payloadLen) + sizeof(*egressMsg) << std::endl;
+            sendto(sockfd, buffer, sizeof(*egressMsg) + ntohl(egressMsg->payloadLen), 0, (struct sockaddr *)&client_addr, len);
         }
 
         return EXIT_SUCCESS;

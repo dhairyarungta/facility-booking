@@ -2,6 +2,8 @@ package udp
 
 import (
 	"errors"
+	"fmt"
+	"io"
 	"net"
 	"time"
 
@@ -9,18 +11,18 @@ import (
 )
 
 type UdpClient struct {
-	hostAddr string
+	HostAddr string
 
 }
 
 func NewUdpClient(hostAddr string) UdpClient {
 	return UdpClient{
-		hostAddr,
+		HostAddr: hostAddr,
 	}
 }
 
 func (client *UdpClient) SendMessage(message utils.UnMarshalledRequestMessage,timeout int, retransmission bool, maxRetries int) (* utils.UnMarshalledReplyMessage,error){
-	conn, err := net.Dial("udp",client.hostAddr)
+	conn, err := net.Dial("udp4",client.HostAddr)
 	if err!=nil{
 		return nil, err
 	}
@@ -43,6 +45,7 @@ func (client *UdpClient) SendMessage(message utils.UnMarshalledRequestMessage,ti
 			}
 
 			if(string(ackBuf) == "ACK"){
+				fmt.Printf("Recieved ACK %v",ackBuf)
 				break
 			}
 			count ++
@@ -55,12 +58,16 @@ func (client *UdpClient) SendMessage(message utils.UnMarshalledRequestMessage,ti
 
 	buf := make([]byte,1024)
 	n, err := conn.Read(buf)
-	if err !=nil{
+	if err !=nil && !errors.Is(err,io.EOF){
 		return nil, err
 	}
+
+	fmt.Println(n)
+	fmt.Println(buf)
 	newReply,err := utils.UnMarshal(buf[:n])
 	if err!=nil{
-		return nil,err
+		return nil,err     
 	}
 	return newReply, nil
 }
+

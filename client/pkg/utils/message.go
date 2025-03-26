@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 )
 
 type Day byte
@@ -21,16 +22,17 @@ type Availability struct {
 }
 
 const (
-	Monday    Day = 0
-	Tuesday   Day = 1
-	Wednesday Day = 2
-	Thursday  Day = 3
-	Friday    Day = 4
-	Saturday  Day = 5
-	Sunday    Day = 6
+	Monday    Day = iota + '0'
+	Tuesday   
+	Wednesday 
+	Thursday  
+	Friday    
+	Saturday  
+	Sunday    
 )
 
 type marshalledMessage struct {
+	reqId uint32
 	uid uint32
 	op uint32
 	payLoadLen uint32
@@ -71,7 +73,7 @@ func Marshal(req *UnMarshalledRequestMessage) ([]byte,error){
 
 		for _,data := range []interface{}{
 			facilityNameLen,
-			req.FacilityName,
+			[]byte(req.FacilityName),
 		}{
 			err := binary.Write(&buf,binary.BigEndian,data)
 			if err!=nil{
@@ -117,7 +119,7 @@ func Marshal(req *UnMarshalledRequestMessage) ([]byte,error){
 
 		for _, data := range []interface{}{
 			facilityNameLen,
-			facilityName,
+			[]byte(facilityName),
 		}{
 			err := binary.Write(&buf,binary.BigEndian,data)
 			if err!=nil{
@@ -138,6 +140,7 @@ func Marshal(req *UnMarshalledRequestMessage) ([]byte,error){
 	var networkBuf bytes.Buffer
 
 	for _,data := range []interface{}{
+		req.ReqId,	
 		req.Uid,
 		req.Op,
 		payloadLen,
@@ -158,6 +161,7 @@ func UnMarshal(incomingPacket []byte) (*UnMarshalledReplyMessage, error){
 	var networkMessage marshalledMessage
 
 	for _, data := range []interface{}{
+		&networkMessage.reqId,
 		&networkMessage.uid,
 		&networkMessage.op,
 		&networkMessage.payLoadLen,
@@ -168,11 +172,20 @@ func UnMarshal(incomingPacket []byte) (*UnMarshalledReplyMessage, error){
 
 	}
 	var newReply UnMarshalledReplyMessage 
+	newReply.Op = networkMessage.op
+	newReply.Uid = networkMessage.uid
+	fmt.Printf("Payload Len %v\n", networkMessage.payLoadLen)
+
+
+	if(networkMessage.payLoadLen <= 0){
+		return &newReply,nil
+	}
 	switch networkMessage.op {
 	case 101:
 		var numDays uint32
-		err := binary.Read(buf,binary.BigEndian,numDays)
+		err := binary.Read(buf,binary.BigEndian,&numDays)
 		if err!=nil{
+			fmt.Println("unable to read byte")
 			return nil,err
 		}
 
@@ -180,20 +193,20 @@ func UnMarshal(incomingPacket []byte) (*UnMarshalledReplyMessage, error){
 
 		for i := range numDays{
 			availability := &availabilities[i]
-			if err = binary.Read(buf,binary.BigEndian,availability.Day); err!=nil{
+			if err = binary.Read(buf,binary.BigEndian,&availability.Day); err!=nil{
 				return nil, err
 			}
 			var numOfAvailTimeSlots uint32
-			if err = binary.Read(buf,binary.BigEndian,numOfAvailTimeSlots); err!=nil{
+			if err = binary.Read(buf,binary.BigEndian,&numOfAvailTimeSlots); err!=nil{
 				return nil, err
 			}
 			for _ = range numOfAvailTimeSlots{
 				var startTime [4]byte
-				if err = binary.Read(buf,binary.LittleEndian,startTime); err!=nil{
+				if err = binary.Read(buf,binary.LittleEndian,&startTime); err!=nil{
 					return nil, err
 				}
 				var endTime [4]byte
-				if err = binary.Read(buf,binary.LittleEndian,endTime); err !=nil{
+				if err = binary.Read(buf,binary.LittleEndian,&endTime); err !=nil{
 
 				}
 
@@ -207,8 +220,6 @@ func UnMarshal(incomingPacket []byte) (*UnMarshalledReplyMessage, error){
 
 		}
 
-		newReply.Uid = networkMessage.uid
-		newReply.Op = networkMessage.op
 		newReply.Availabilities = availabilities
 	case 102:
 		break
@@ -218,7 +229,7 @@ func UnMarshal(incomingPacket []byte) (*UnMarshalledReplyMessage, error){
 		break
 	case 105:
 		var capacity uint32
-		if err := binary.Read(buf,binary.BigEndian,capacity); err!=nil{
+		if err := binary.Read(buf,binary.BigEndian,&capacity); err!=nil{
 			return nil,err
 		}
 		newReply.Capacity = capacity
