@@ -16,6 +16,7 @@
 #include <chrono>
 #include <fmt/core.h>
 
+#define TESTMODE 1
 #define PORT 3000
 #define NUM_AVAIL 50 
 #define FACILITY_NAME_LEN 30
@@ -45,10 +46,10 @@ enum class Day : char {
 };
 
 InvocationSemantics stringToInvocationSemantics (std::string s) {
-    if ( s == std::string_view{"AT_LEAST_ONCE"} ) {
+    if ( s == std::string_view("AT_LEAST_ONCE") ) {
         return InvocationSemantics::AT_LEAST_ONCE;
     }
-    else if ( s == std::string_view{"AT_MOST_ONCE"} ) {
+    else if ( s == std::string_view("AT_MOST_ONCE")) {
         return InvocationSemantics::AT_MOST_ONCE;
     }
     else {
@@ -270,6 +271,7 @@ public:
     400 - INVALID confirmation ID
 
     OP TYPES:
+
     101 - QUERY
     numDays - 4 bytes, number of days in msg
     INFO PER DAY
@@ -553,10 +555,10 @@ class Server {
 
         *ptrTotalMsgSize = sizeof(MarshalledMessage) + size;
         uint32_t op = htonl(msg->errorCode);
-        if (msg->errorCode != 100) return egressMsg;
         uint32_t uid = htonl(msg->uid);
         egressMsg->op = op;
         egressMsg->uid = uid;
+        if (msg->errorCode != 100) return egressMsg;
         switch (msg->op) {
             case 101 : 
                 query_request_handle(msg, egressMsg->payload);
@@ -584,7 +586,7 @@ class Server {
         
         int payloadIndex = 4*sizeof(uint32_t);
         
-        switch (localMsg.uid) {
+        switch (localMsg.op) {
             case 101:
                 query_request_handle(localMsg, msg->payload, payloadLen);
                 break;
@@ -716,6 +718,7 @@ public:
     }
 
     void handleDelete(UnmarshalledRequestMessage& msg, UnmarshalledReplyMessage& replyMsg) {
+
         replyMsg.op = 106;
         uint32_t uid = msg.uid;
         if (bookings.find(uid) == bookings.end()) {
@@ -730,7 +733,6 @@ public:
         bookings.erase(uid);
         replyMsg.errorCode = 100;
     }
-
 
     void triggerCallback(int& sockfd, const UnmarshalledRequestMessage& reqMsg, 
             const UnmarshalledReplyMessage& replyMsg) {
@@ -827,7 +829,6 @@ public:
             UnmarshalledRequestMessage localMsg = 
                 unmarshal( reinterpret_cast< MarshalledMessage* >(buffer) );
 
-            //plan maybe add a handler class here? handler class
             UnmarshalledReplyMessage localEgress;
             if (replyCache.find(localMsg.reqID) == replyCache.end() 
                 || semantics == InvocationSemantics::AT_LEAST_ONCE) {
@@ -866,7 +867,7 @@ public:
             }
 
             // Echo back the received message
-            if (semantics == InvocationSemantics::AT_MOST_ONCE) {
+            if ( !TESTMODE && semantics == InvocationSemantics::AT_MOST_ONCE) {
                 replyCache[localMsg.reqID] = localEgress; //cache the reply for AT MOST ONCE
             }
 
@@ -879,6 +880,8 @@ public:
                 triggerCallback(sockfd, localMsg, localEgress);
             }
         }
+
+        return EXIT_SUCCESS;
     }
 
 };

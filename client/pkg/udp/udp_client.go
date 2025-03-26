@@ -19,14 +19,14 @@ func NewUdpClient(hostAddr string) UdpClient {
 	}
 }
 
-func (client *UdpClient) sendMessage(message utils.NetworkMessage,timeout int, retransmission bool, maxRetries int) ([]byte,error){
+func (client *UdpClient) SendMessage(message utils.UnMarshalledRequestMessage,timeout int, retransmission bool, maxRetries int) (* utils.UnMarshalledReplyMessage,error){
 	conn, err := net.Dial("udp",client.hostAddr)
 	if err!=nil{
 		return nil, err
 	}
 	conn.SetDeadline(time.Now().Add(time.Duration(timeout) * time.Second))
 	defer conn.Close()
-	data, err := message.Marshal()
+	data, err := utils.Marshal(&message)
 	if err!=nil{
 		return nil,err
 	}
@@ -58,5 +58,9 @@ func (client *UdpClient) sendMessage(message utils.NetworkMessage,timeout int, r
 	if err !=nil{
 		return nil, err
 	}
-	return buf[:n], nil
+	newReply,err := utils.UnMarshal(buf[:n])
+	if err!=nil{
+		return nil,err
+	}
+	return newReply, nil
 }
