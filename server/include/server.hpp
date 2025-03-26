@@ -14,6 +14,7 @@
 #include <string_view>
 #include <cstdlib>
 
+#define TESTMODE 1
 #define PORT 3000
 #define NUM_AVAIL 50 
 #define FACILITY_NAME_LEN 30
@@ -40,10 +41,10 @@ enum class Day : char {
 };
 
 InvocationSemantics stringToInvocationSemantics (std::string s) {
-    if ( s == std::string_view{"AT_LEAST_ONCE"} ) {
+    if ( s == std::string_view("AT_LEAST_ONCE") ) {
         return InvocationSemantics::AT_LEAST_ONCE;
     }
-    else if ( s == std::string_view{"AT_MOST_ONCE"} ) {
+    else if ( s == std::string_view("AT_MOST_ONCE")) {
         return InvocationSemantics::AT_MOST_ONCE;
     }
     else {
@@ -208,25 +209,25 @@ public:
     Request Message
     OP TYPES:
     101 - QUERY
-    //facility name length (uint32_t), facility name (char), non '\0' ending
-    // days to query for single byte for each, 0 = Monday, 1 = Tuesday  ....
+    facility name length (uint32_t), facility name (char), non '\0' ending
+    days to query for single byte for each, 0 = Monday, 1 = Tuesday  ....
 
     102 - CREATE
-    //facility name length (uint32_t), facility name (char), non '\0' ending
-    //single byte for day of booking as a eg 0 for monday
-    // 4 bytes for start time, eg: times are represented as {1, 1, 0, 9} for 11:09
-    // 4 bytes for end time 
+    facility name length (uint32_t), facility name (char), non '\0' ending
+    single byte for day of booking as a eg 0 for monday
+    4 bytes for start time, eg: times are represented as {1, 1, 0, 9} for 11:09
+    4 bytes for end time 
 
     103 - UPDATE
     104 - MONITOR
 
     105 - QUERY_CAPACITY
-    //facility name length (uint32_t), facility name (char), non '\0' ending
+    facility name length (uint32_t), facility name (char), non '\0' ending
 
     106 - DELETE/CANCEL 
 
     107 - GET ALL FACILITY NAMES
-    //payload len = 0
+    payload len = 0
 */
 /*
     Reply Message
@@ -237,6 +238,7 @@ public:
     400 - INVALID confirmation ID
 
     OP TYPES:
+
     101 - QUERY
     numDays - 4 bytes, number of days in msg
     INFO PER DAY
@@ -415,10 +417,10 @@ class Server {
         int size = getPayloadSize(msg);
         MarshalledMessage* egressMsg = (MarshalledMessage*) malloc(sizeof(MarshalledMessage)+size);
         uint32_t op = htonl(msg->errorCode);
-        if (msg->errorCode != 100) return egressMsg;
         uint32_t uid = htonl(msg->uid);
         egressMsg->op = op;
         egressMsg->uid = uid;
+        if (msg->errorCode != 100) return egressMsg;
         switch (msg->op) {
             case 101 : 
                 query_request_handle(msg, egressMsg->payload);
@@ -444,7 +446,7 @@ class Server {
         
         int payloadIndex = 3*sizeof(uint32_t);
         
-        switch (localMsg.uid) {
+        switch (localMsg.op) {
             case 101:
                 query_request_handle(localMsg, msg->payload, payloadLen);
                 break;
@@ -482,6 +484,7 @@ class Server {
 
 public:
     Server(std::unordered_map<std::string, Facility>& facilities, InvocationSemantics semantics) : facilities(facilities), semantics(semantics) {}
+
     void handleQuery(UnmarshalledRequestMessage& msg, UnmarshalledReplyMessage& replyMsg) {
         replyMsg.op = 101;
         std::vector<Day> days = msg.days;
@@ -552,6 +555,7 @@ public:
         replyMsg.errorCode = 100;
     }
     void handleDelete(UnmarshalledRequestMessage& msg, UnmarshalledReplyMessage& replyMsg) {
+
         replyMsg.op = 106;
         uint32_t uid = msg.uid;
         if (bookings.find(uid) == bookings.end()) {
@@ -566,7 +570,61 @@ public:
         bookings.erase(uid);
         replyMsg.errorCode = 100;
     }
-    void serve() {
+    //! to delete in final iteration
+    void handleTest(UnmarshalledRequestMessage &msg,UnmarshalledReplyMessage& replyMsg){
+        switch (msg.op)
+        {
+        case 101:
+            assert((
+            msg.facilityName == "test" 
+            && msg.days == std::vector<Day>{Day::Monday,Day::Tuesday,Day::Wednesday}
+            ) && "101 unmarshalled request not correct");
+
+            replyMsg.op = 101;
+            replyMsg.uid = msg.uid;
+            replyMsg.errorCode = 100;
+            replyMsg.facilityNames = std::vector<std::string>{"test"};
+            replyMsg.availabilities = std::vector<std::pair<Day,std::vector<hourminute>>>{
+                {
+                    Day::Monday,
+                    {
+                        {0, 0},
+                        {11,59}
+                    }
+                }
+            };
+            break;
+        case 102:
+            assert((
+                msg.facilityName == "test"
+                && msg.days == std::vector<Day>{
+                    Day::Monday
+                }
+                && msg.startTime == hourminute{0,0}
+                && msg.endTime == hourminute{11,59}
+            ) && "op 102 unmarshalled request not correct");
+
+            replyMsg.op = msg.op;
+            replyMsg.errorCode = 100;
+            replyMsg.uid = msg.uid;
+            break;
+        case 105:
+            assert((
+                msg.facilityName == "test"
+            ) && "op 105 unmarshalled request not correct");
+            replyMsg.op = msg.op;
+            replyMsg.uid = msg.op; 
+            replyMsg.errorCode = 100;
+            replyMsg.capacity = 777;
+            break;
+        default:
+            break;
+        }
+        
+    }
+
+
+    int serve() {
         int sockfd;
         char buffer[BUFFER_LEN];
         struct sockaddr_in server_addr, client_addr;
@@ -606,9 +664,11 @@ public:
             MarshalledMessage* msg = reinterpret_cast<MarshalledMessage*>(buffer);
             UnmarshalledRequestMessage localMsg = unmarshal(msg);
 
-            //plan maybe add a handler class here? handler class
             UnmarshalledReplyMessage localEgress;
-            if (replyCache.find(localMsg.reqID) == replyCache.end() || semantics == InvocationSemantics::AT_LEAST_ONCE) {
+
+            if (TESTMODE){
+                handleTest(localMsg,localEgress);
+            } else if (replyCache.find(localMsg.reqID) == replyCache.end() || semantics == InvocationSemantics::AT_LEAST_ONCE) {
                 switch (msg->op) {
                     case 101 : 
                         handleQuery(localMsg, localEgress);
@@ -626,7 +686,7 @@ public:
                         break;
                     case 105 :
                         handleCapacity(localMsg, localEgress);
-                        return;
+                        return 0;
                     case 106 :
                         handleDelete(localMsg, localEgress);
                     default :
@@ -638,14 +698,17 @@ public:
                 localEgress = replyCache[localMsg.reqID];
             }
             // Echo back the received message
-            if (semantics == InvocationSemantics::AT_MOST_ONCE) {
+            if ( !TESTMODE && semantics == InvocationSemantics::AT_MOST_ONCE) {
                 replyCache[localMsg.reqID] = localEgress; //cache the reply for AT MOST ONCE
             }
             MarshalledMessage* egressMsg = marshal(&localEgress);
             memcpy(buffer, egressMsg, sizeof(egressMsg));
             sendto(sockfd, buffer, sizeof(egressMsg), 0, (struct sockaddr *)&client_addr, len);
         }
+
+        return EXIT_SUCCESS;
     }
+
 
 };
 
