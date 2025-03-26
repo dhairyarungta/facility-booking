@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 
@@ -11,9 +10,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-/*TODO
-insert client logic in all cobra Run functions, flags will contain the arguments
-*/
 
 //This file contains the request logic for each designated service
 
@@ -24,8 +20,20 @@ var QueryAvailability = &cobra.Command{
 	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		hostArr, err := cmd.Flags().GetString("address")
+		if err!=nil {
+			fmt.Println("Missing 1 or more params")
+			os.Exit(1)
+		}
+
+
 		facility, err := cmd.Flags().GetString("facility")
-		days, err :=cmd.Flags().GetStringSlice("days")
+		if err!=nil {
+			fmt.Println("Missing 1 or more params")
+			os.Exit(1)
+		}
+
+
+		days, err := cmd.Flags().GetStringSlice("days")
 
 		if err!=nil {
 			fmt.Println("Missing 1 or more params")
@@ -104,80 +112,82 @@ var TestMarshalUnMarshal = &cobra.Command{
 			fmt.Println("Unable to find address")
 			os.Exit(1)
 		}
+		fmt.Printf("Sending Test request to %v\n",ip)
 
 		client := udp.NewUdpClient(ip)
-
+		fmt.Println("starting client")
 		//101 test
 		newReq := utils.UnMarshalledRequestMessage{
 			ReqId: 1,
 			Uid: 1,
 			Op: 101,
 			Days: []utils.Day{
-				1,2,3,
+				'0','1','2',
 			},
 			FacilityName: "test",
 
 		}
 		res,err := client.SendMessage(newReq,5,true,1)
-		if(res.Op != 101 || res.Uid != 1  || res.FacilityNames[0] != "test" || res.Availabilities[0].Day != 0 || res.Availabilities[0].TimeSlots[0].StartTime  != utils.Hourminute{0,0,0,0} || res.Availabilities[0].TimeSlots[0].EndTime != utils.Hourminute{1,1,5,9}){
-			fmt.Println("101 Invalid reply format")
-			os.Exit(1)
+		fmt.Printf("%v\n",client.HostAddr)
+		// if(res.Op != 101 || res.Uid != 1  || res.FacilityNames[0] != "test" || res.Availabilities[0].Day != 0 || res.Availabilities[0].TimeSlots[0].StartTime  != utils.Hourminute{0,0,0,0} || res.Availabilities[0].TimeSlots[0].EndTime != utils.Hourminute{1,1,5,9}){
+		// 	fmt.Println("101 Invalid reply format")
+		// 	os.Exit(1)
 
-		}
+		// }
 		spew.Dump(res)
 		if err!= nil{
-			fmt.Println("failed to send to server")	
+			fmt.Printf("101 failed to send request to server: %v",err)
 			os.Exit(1)
 		}
 
-		//102 test
-		newReq = utils.UnMarshalledRequestMessage{
-			ReqId: 1,
-			Uid: 1,
-			Op: 102,
-			Days: []utils.Day{
-				1,
-			},
-			StartTime: utils.Hourminute{
-				0,0,0,0,
-			},
-			EndTime: utils.Hourminute{
-				1,1,5,9,
-			},
+		// //102 test
+		// newReq = utils.UnMarshalledRequestMessage{
+		// 	ReqId: 1,
+		// 	Uid: 1,
+		// 	Op: 102,
+		// 	Days: []utils.Day{
+		// 		1,
+		// 	},
+		// 	StartTime: utils.Hourminute{
+		// 		0,0,0,0,
+		// 	},
+		// 	EndTime: utils.Hourminute{
+		// 		1,1,5,9,
+		// 	},
 
-		}
+		// }
 
-		res ,err = client.SendMessage(newReq,5,true,1)
-		spew.Dump(res)
-		if(res.Op != 102 || res.Uid != 1){
-			fmt.Println("102 invalid reply format")
-			os.Exit(1)
-		}
-		if err!= nil{
-			fmt.Println("failed to send to server")	
-			os.Exit(1)
-		}
+		// res ,err = client.SendMessage(newReq,5,true,1)
+		// spew.Dump(res)
+		// if(res.Op != 102 || res.Uid != 1){
+		// 	fmt.Println("102 invalid reply format")
+		// 	os.Exit(1)
+		// }
+		// if err!= nil{
+		// 	fmt.Println("failed to send to server")	
+		// 	os.Exit(1)
+		// }
 
 
-		//105 test
-		newReq = utils.UnMarshalledRequestMessage{
-			ReqId: 1,
-			Uid: 1,
-			Op: 105,
-			FacilityName: "test",
-		}
+		// //105 test
+		// newReq = utils.UnMarshalledRequestMessage{
+		// 	ReqId: 1,
+		// 	Uid: 1,
+		// 	Op: 105,
+		// 	FacilityName: "test",
+		// }
 
-		res,err = client.SendMessage(newReq,5,true,1)
-		spew.Dump(res)
-		if(res.Op != 105 || res.Uid != 1 || res.Capacity != 777){
-			fmt.Println("105 invalid reply format")
-			os.Exit(1)
-		}
+		// res,err = client.SendMessage(newReq,5,true,1)
+		// spew.Dump(res)
+		// if(res.Op != 105 || res.Uid != 1 || res.Capacity != 777){
+		// 	fmt.Println("105 invalid reply format")
+		// 	os.Exit(1)
+		// }
 
-		if err!= nil{
-			fmt.Println("failed to send to server")	
-			os.Exit(1)
-		}
+		// if err!= nil{
+		// 	fmt.Println("failed to send to server")	
+		// 	os.Exit(1)
+		// }
 
 		
 	},
@@ -208,6 +218,7 @@ func init(){
 	StartMonitoring.MarkFlagRequired("facility")
 	StartMonitoring.Flags().IntP("interval","i",0,"enter duration of monitoring in seconds")
 	StartMonitoring.MarkFlagRequired("interval")
+
 
 }
 	

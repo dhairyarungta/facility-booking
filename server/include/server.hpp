@@ -36,7 +36,7 @@ enum class InvocationSemantics {
 };
 
 enum class Day : char {
-    Monday ='0',
+    Monday = '0',
     Tuesday,
     Wednesday,
     Thursday,
@@ -152,7 +152,6 @@ class Facility {
 public:
     Facility(std::string name, int capacity) : name(name), capacity(capacity) 
     { }
-
     std::vector<std::pair<Day, std::vector<hourminute>>> 
         queryAvail(std::vector<Day>& days) {
 
@@ -338,6 +337,7 @@ struct UnmarshalledRequestMessage {
 }; 
 
 struct UnmarshalledReplyMessage {
+    uint32_t reqID; //field for testing to remove later
     uint32_t uid; //confirmation ID given by server
     uint32_t op; //operation that was performed
     uint32_t errorCode; //error code if revelant
@@ -489,6 +489,8 @@ class Server {
                 payloadIdx += sizeof(uint32_t);
             }
         }
+        *payloadLen = htonl(payloadIdx);
+        
     }
 
     void query_capacity_handle (UnmarshalledRequestMessage& msg, char* payload, 
@@ -556,12 +558,14 @@ class Server {
         *ptrTotalMsgSize = sizeof(MarshalledMessage) + size;
         uint32_t op = htonl(msg->errorCode);
         uint32_t uid = htonl(msg->uid);
+        uint32_t reqId = htonl(msg->reqID);
         egressMsg->op = op;
         egressMsg->uid = uid;
+        egressMsg->reqID = reqId;
         if (msg->errorCode != 100) return egressMsg;
         switch (msg->op) {
             case 101 : 
-                query_request_handle(msg, egressMsg->payload);
+                query_request_handle(msg, egressMsg->payload,&egressMsg->payloadLen);
                 break;
             case 105 :
                 query_capacity_handle(msg, egressMsg->payload);
@@ -865,7 +869,6 @@ public:
             else {
                 localEgress = replyCache[localMsg.reqID];
             }
-
             // Echo back the received message
             if ( !TESTMODE && semantics == InvocationSemantics::AT_MOST_ONCE) {
                 replyCache[localMsg.reqID] = localEgress; //cache the reply for AT MOST ONCE
