@@ -63,8 +63,8 @@ auto compareBookStruct = [](const bookStruct& a, const bookStruct& b) {
 
 class Facility {
     std::string name;
-    // std::mutex mtx;
     int capacity;
+
     std::unordered_map< Day, 
         std::set<bookStruct, decltype(compareBookStruct)> > reservations; 
     //Day and the reservations for that day (for one facility)
