@@ -754,7 +754,7 @@ public:
                 localIngress.facilityName = facilityName;
                 localIngress.op = 101;
 
-                const auto day_list = std::list {Day::Monday, Day::Tuesday, Day::Wednesday, 
+                const auto day_list = std::list<Day>{Day::Monday, Day::Tuesday, Day::Wednesday, 
                     Day::Thursday, Day::Friday, Day::Saturday, Day::Sunday};
 
                 #ifdef __cpp_lib_containers_ranges
