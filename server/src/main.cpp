@@ -3,9 +3,30 @@
 #include <fmt/core.h>
 #include <fmt/format.h>
 
-std::unordered_map<std::string, Facility> facilities {};
 
 int main(){
+    Facility gym("Fitness Center", 50);
+    Facility pool("Swimming Pool", 30));
+    Facility conference("Conference Hall", 100);
+    Facility library("Research Library", 75);
+    Facility cafeteria("Main Cafeteria", 200);
+    Facility lab("Computer Lab", 40);
+    Facility theater("Auditorium", 350);
+    Facility studio("Art Studio", 25);
+    Facility lounge("Student Lounge", 60);
+    Facility field("Sports Field", 120);
+
+    std::vector<Facility> facility_vec = {
+        gym, pool, conference, library, cafeteria,
+        lab, theater, studio, lounge, field
+    };
+
+    std::unordered_map<std::string, Facility> facilities {};
+
+    for (auto& facility : facility_vec) {
+        facilities.emplace(facility.getName(), facility);
+    }
+    
     fmt::print("Welcome to the SC4051 Server\n"); 
 
     while(true) {
