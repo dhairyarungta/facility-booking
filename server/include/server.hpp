@@ -16,7 +16,6 @@
 #include <chrono>
 #include <fmt/core.h>
 
-#define TESTMODE 1
 #define PORT 3000
 #define NUM_AVAIL 50 
 #define FACILITY_NAME_LEN 30
@@ -36,7 +35,7 @@ enum class InvocationSemantics {
 };
 
 enum class Day : char {
-    Monday = '0',
+    Monday ='0',
     Tuesday,
     Wednesday,
     Thursday,
@@ -46,10 +45,10 @@ enum class Day : char {
 };
 
 InvocationSemantics stringToInvocationSemantics (std::string s) {
-    if ( s == std::string_view("AT_LEAST_ONCE") ) {
+    if ( s == std::string_view{"AT_LEAST_ONCE"} ) {
         return InvocationSemantics::AT_LEAST_ONCE;
     }
-    else if ( s == std::string_view("AT_MOST_ONCE")) {
+    else if ( s == std::string_view{"AT_MOST_ONCE"} ) {
         return InvocationSemantics::AT_MOST_ONCE;
     }
     else {
@@ -152,6 +151,7 @@ class Facility {
 public:
     Facility(std::string name, int capacity) : name(name), capacity(capacity) 
     { }
+
     std::vector<std::pair<Day, std::vector<hourminute>>> 
         queryAvail(std::vector<Day>& days) {
 
@@ -270,7 +270,6 @@ public:
     400 - INVALID confirmation ID
 
     OP TYPES:
-
     101 - QUERY
     numDays - 4 bytes, number of days in msg
     INFO PER DAY
@@ -337,7 +336,6 @@ struct UnmarshalledRequestMessage {
 }; 
 
 struct UnmarshalledReplyMessage {
-    uint32_t reqID; //field for testing to remove later
     uint32_t uid; //confirmation ID given by server
     uint32_t op; //operation that was performed
     uint32_t errorCode; //error code if revelant
@@ -489,8 +487,6 @@ class Server {
                 payloadIdx += sizeof(uint32_t);
             }
         }
-        *payloadLen = htonl(payloadIdx);
-        
     }
 
     void query_capacity_handle (UnmarshalledRequestMessage& msg, char* payload, 
@@ -557,15 +553,13 @@ class Server {
 
         *ptrTotalMsgSize = sizeof(MarshalledMessage) + size;
         uint32_t op = htonl(msg->errorCode);
+        if (msg->errorCode != 100) return egressMsg;
         uint32_t uid = htonl(msg->uid);
-        uint32_t reqId = htonl(msg->reqID);
         egressMsg->op = op;
         egressMsg->uid = uid;
-        egressMsg->reqID = reqId;
-        if (msg->errorCode != 100) return egressMsg;
         switch (msg->op) {
             case 101 : 
-                query_request_handle(msg, egressMsg->payload,&egressMsg->payloadLen);
+                query_request_handle(msg, egressMsg->payload);
                 break;
             case 105 :
                 query_capacity_handle(msg, egressMsg->payload);
@@ -590,7 +584,7 @@ class Server {
         
         int payloadIndex = 4*sizeof(uint32_t);
         
-        switch (localMsg.op) {
+        switch (localMsg.uid) {
             case 101:
                 query_request_handle(localMsg, msg->payload, payloadLen);
                 break;
@@ -722,7 +716,6 @@ public:
     }
 
     void handleDelete(UnmarshalledRequestMessage& msg, UnmarshalledReplyMessage& replyMsg) {
-
         replyMsg.op = 106;
         uint32_t uid = msg.uid;
         if (bookings.find(uid) == bookings.end()) {
@@ -737,6 +730,7 @@ public:
         bookings.erase(uid);
         replyMsg.errorCode = 100;
     }
+
 
     void triggerCallback(int& sockfd, const UnmarshalledRequestMessage& reqMsg, 
             const UnmarshalledReplyMessage& replyMsg) {
@@ -760,7 +754,7 @@ public:
                 localIngress.facilityName = facilityName;
                 localIngress.op = 101;
 
-                const auto day_list = std::list {Day::Monday, Day::Tuesday, Day::Wednesday, 
+                const auto day_list = std::list<Day>{Day::Monday, Day::Tuesday, Day::Wednesday, 
                     Day::Thursday, Day::Friday, Day::Saturday, Day::Sunday};
 
                 #ifdef __cpp_lib_containers_ranges
@@ -833,6 +827,7 @@ public:
             UnmarshalledRequestMessage localMsg = 
                 unmarshal( reinterpret_cast< MarshalledMessage* >(buffer) );
 
+            //plan maybe add a handler class here? handler class
             UnmarshalledReplyMessage localEgress;
             if (replyCache.find(localMsg.reqID) == replyCache.end() 
                 || semantics == InvocationSemantics::AT_LEAST_ONCE) {
@@ -869,8 +864,9 @@ public:
             else {
                 localEgress = replyCache[localMsg.reqID];
             }
+
             // Echo back the received message
-            if ( !TESTMODE && semantics == InvocationSemantics::AT_MOST_ONCE) {
+            if (semantics == InvocationSemantics::AT_MOST_ONCE) {
                 replyCache[localMsg.reqID] = localEgress; //cache the reply for AT MOST ONCE
             }
 
@@ -883,8 +879,6 @@ public:
                 triggerCallback(sockfd, localMsg, localEgress);
             }
         }
-
-        return EXIT_SUCCESS;
     }
 
 };
