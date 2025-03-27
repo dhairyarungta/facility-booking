@@ -4,12 +4,10 @@
 #include <iostream>
 #include <string_view>
 #include <vector>
-#include <unordered_set>
 #include <set>
 #include <utility>
 #include <unordered_map>
 #include <algorithm>
-#include <atomic>
 #include <cstring>    
 #include <arpa/inet.h>  
 #include <unistd.h>
@@ -357,6 +355,10 @@ struct CallbackInfo {
     CallbackInfo(struct sockaddr_in client_addr, sys_time recv_time, int32_t monitorInterval)
         : client_addr(client_addr), recv_time(recv_time), monitorInterval(monitorInterval) 
     { }
+
+    bool operator < (const CallbackInfo& c1) const {
+        return this->recv_time <= c1.recv_time;
+    }
 };
 
 class Server {
@@ -372,7 +374,7 @@ class Server {
     std::unordered_map<uint32_t, UnmarshalledReplyMessage> replyCache;
     //reply cache for t most once semantics
 
-    std::unordered_map<std::string, std::unordered_set<CallbackInfo>> callbackMap;
+    std::unordered_map<std::string, std::set<CallbackInfo>> callbackMap;
     // facility_name,  Callbackinfo
 
     void query_request_handle (UnmarshalledRequestMessage& msg, char* payload, 
@@ -623,7 +625,7 @@ public:
             replyMsg.errorCode = 200;
             return;
         }
-        Facility facility = facilities[facilityName];
+        auto facility = facilities.at(facilityName);
         replyMsg.availabilities = std::move(facility.queryAvail(days));
         replyMsg.errorCode = 100;
     }
@@ -636,7 +638,7 @@ public:
             replyMsg.errorCode = 200;
             return;
         }
-        Facility facility = facilities[facilityName];
+        Facility facility = facilities.at(facilityName);
         hourminute startTime = msg.startTime;
         hourminute endTime = msg.endTime;
         bookStruct booking = {startTime, endTime};
@@ -668,7 +670,7 @@ public:
         std::string facilityName = booking.first.first;
         Day day = booking.first.second;
         bookStruct time = booking.second;
-        Facility facility = facilities[facilityName];
+        Facility facility = facilities.at(facilityName);
         int32_t offset = msg.offset;
         bool success = facility.updateBooking(day, time, offset);
         if (!success) {
@@ -686,7 +688,7 @@ public:
             replyMsg.errorCode = 200;
             return;
         }
-        callbackMap[msg.facilityName].insert( {client_addr, recv_time, msg.offset} );
+        callbackMap[msg.facilityName].insert( CallbackInfo(client_addr, recv_time, msg.offset) );
         // insert callback in the map, for the particular facility name
         replyMsg.errorCode = 100;
         // callback is registered successfully
@@ -699,7 +701,7 @@ public:
             replyMsg.errorCode = 200;
             return;
         }
-        Facility facility = facilities[facilityName];
+        Facility facility = facilities.at(facilityName);
         replyMsg.capacity = facility.queryCapacity();
         replyMsg.errorCode = 100;
     }
@@ -722,7 +724,7 @@ public:
         bookStruct time = bookings[uid].second;
         Day day = bookings[uid].first.second;
         std::string facilityName = bookings[uid].first.first;
-        Facility facility = facilities[facilityName];
+        Facility facility = facilities.at(facilityName);
         facility.cancelBooking(time, day);
         bookings.erase(uid);
         replyMsg.errorCode = 100;
@@ -870,13 +872,12 @@ public:
             int totalMsgSize = 0; 
             MarshalledMessage* egressMsg = marshal(&localEgress, &totalMsgSize);
             memcpy(buffer, egressMsg, totalMsgSize);
-            sendto(sockfd, buffer, totalMsgSize, 0, (struct sockaddr*)&client_addr, len);
-            if ( localEgress.errorCode == 100 &&  ( localMsg.op == 102 || localMsg.op == 103 || localMsg.op == 106 ) ) {
+            sendto(sockfd, buffer, totalMsgSize, 0, (struct sockaddr*) &client_addr, len);
+            if ( localEgress.errorCode == 100 &&  
+                ( localMsg.op == 102 || localMsg.op == 103 || localMsg.op == 106 ) ) {
                 triggerCallback(sockfd, localMsg, localEgress);
             }
         }
     }
 
 };
-
-
