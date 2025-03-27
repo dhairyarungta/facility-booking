@@ -14,6 +14,7 @@
 #include <string_view>
 #include <cstdlib>
 #include <chrono>
+#include <fmt/core.h>
 
 #define PORT 3000
 #define NUM_AVAIL 50 
