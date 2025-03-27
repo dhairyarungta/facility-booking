@@ -425,7 +425,7 @@ class Server {
                 return size;
             }
 
-            case 106:
+            case 107:
             {
                 int size = 0;
                 size += sizeof(uint32_t); 
