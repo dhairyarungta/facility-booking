@@ -473,7 +473,7 @@ class Server {
 
     }
 
-    void query_request_handle(const UnmarshalledReplyMessage* msg, char* payload, uint32_t* payloadLen) {
+    void query_request_handle(const UnmarshalledReplyMessage* msg, char* payload) {
         int payloadIdx = 0;
         uint32_t numDays = htonl(msg->availabilities.size());
         memcpy(payload+payloadIdx, &numDays, sizeof(uint32_t));
@@ -494,7 +494,6 @@ class Server {
                 payloadIdx += sizeof(uint32_t);
             }
         }
-        *payloadLen = htonl(payloadIdx);
         
     }
 
@@ -506,6 +505,7 @@ class Server {
     }
 
     void query_capacity_handle(const UnmarshalledReplyMessage* msg, char* payload) {
+
         uint32_t capacity = htonl(msg->capacity);
         memcpy(payload, &capacity, sizeof(uint32_t));
     }
@@ -534,6 +534,7 @@ class Server {
         int payloadLen) {
             uint32_t facilityNameLen = ntohl(*reinterpret_cast< uint32_t* >(payload));
             std::string facilityName (reinterpret_cast< char* >(payload+4), facilityNameLen);
+            facilityName.push_back('\x00');
             msg.facilityName = std::move(facilityName);
 
             payload = payload + 4 + facilityNameLen;
@@ -548,6 +549,7 @@ class Server {
             std::string start_hour (reinterpret_cast< char* >(payload), 2);
             std::string start_minute (reinterpret_cast< char* >(payload+2), 2);
             msg.startTime = {std::stoi(start_hour), std::stoi(start_minute)};
+
             std::string end_hour (reinterpret_cast< char* >(payload+4), 2); 
             std::string end_minute (reinterpret_cast< char* >(payload+6), 2); 
             msg.endTime = {std::stoi(end_hour), std::stoi(end_minute)};
@@ -568,9 +570,10 @@ class Server {
         egressMsg->uid = uid;
         egressMsg->reqID = reqId;
         if (msg->errorCode != 100) return egressMsg;
+        egressMsg->payloadLen = htonl(size);
         switch (msg->op) {
             case 101 : 
-                query_request_handle(msg, egressMsg->payload,&egressMsg->payloadLen);
+                query_request_handle(msg, egressMsg->payload);
                 break;
             case 105 :
                 query_capacity_handle(msg, egressMsg->payload);
@@ -766,12 +769,8 @@ public:
                 Day::Monday,
                 {
                 {
-                    0,0
-
+                    0,1439
                 },
-                {
-                    23,59
-                }
                 }
            }
         };
@@ -808,10 +807,9 @@ public:
        case 107:
         replyMsg.facilityNames = std::vector<std::string>{
             "Fitness Center",
-            "Swimming Pool",
-            "Conference Hall",
-            "Research Library"
+            "Swimming Pool"
         };
+        replyMsg.uid = 1;
         break;
        default:
         assert(1==0);
@@ -917,7 +915,10 @@ public:
 
             //plan maybe add a handler class here? handler class
             UnmarshalledReplyMessage localEgress;
-            if (replyCache.find(localMsg.reqID) == replyCache.end() 
+            if (TESTMODE){
+                handleTest(localMsg,localEgress);
+
+            } else if (replyCache.find(localMsg.reqID) == replyCache.end() 
                 || semantics == InvocationSemantics::AT_LEAST_ONCE) {
 
                 switch (localMsg.op) {

@@ -87,11 +87,12 @@ func TestMarshalUnMarshal102(t *testing.T){
         Days: []utils.Day{
             '0',
         },
+        FacilityName: "Student Lounge",
         StartTime: utils.HourMinutes{
-            1,0,0,0,
+            '1','0','0','0',
         },
         EndTime: utils.HourMinutes{
-            1,1,0,0,
+            '1','1','0','0',
         },
     }
 
@@ -101,7 +102,7 @@ func TestMarshalUnMarshal102(t *testing.T){
         os.Exit(1)
     }
 
-    assert.Equal(102, res.Op)
+    assert.Equal(uint32(102), res.Op)
     spew.Dump(res)
 
 }
@@ -122,7 +123,7 @@ func TestMarshalUnMarshal103(t *testing.T){
         os.Exit(1)
     }
 
-    assert.Equal(103, res.Op)
+    assert.Equal(uint32(103), res.Op)
     spew.Dump(res)
 
 }
@@ -144,7 +145,8 @@ func TestMarshalUnMarshal104(t *testing.T){
         os.Exit(1)
     }
 
-    assert.Equal(104,res.Op)
+    assert.Equal(uint32(104),res.Op)
+
 
 }
 
@@ -165,7 +167,7 @@ func TestMarshalUnMarshal105(t *testing.T){
         os.Exit(1)
     }
 
-    assert.Equal(350, res.Capacity)
+    assert.Equal(uint32(350), res.Capacity)
 
 }
 
@@ -196,7 +198,7 @@ func TestMarshalUnMarshal106(t *testing.T){
     // assert.Equal(102, res.Op)
 
     delReq := utils.UnMarshalledRequestMessage{
-        ReqId: 2,
+        ReqId: 1,
         Uid: 1,
         Op: 106,
     }
@@ -207,7 +209,7 @@ func TestMarshalUnMarshal106(t *testing.T){
         os.Exit(1)
     }
 
-    assert.Equal(106, delRes.Op)
+    assert.Equal(uint32(106), delRes.Op)
     spew.Dump(delRes)
 
 }
@@ -227,12 +229,10 @@ func TestMarshalUnMarshal107(t *testing.T){
         os.Exit(1)
     }
 
-    assert.Equal(107, res.Op)
-    assert.Equal(res.FacilityNames,[]string{
+    assert.Equal(uint32(107), res.Op)
+    assert.Equal([]string{
         "Fitness Center",
         "Swimming Pool",
-        "Conference Hall",
-        "Research Library",
-    })
+    },res.FacilityNames)
     spew.Dump(res)
 }

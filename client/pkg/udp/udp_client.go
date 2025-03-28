@@ -7,6 +7,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/dhairyarungta/facility-booking/client/pkg/utils"
 )
 
@@ -63,7 +64,7 @@ func (client *UdpClient) SendMessage(message utils.UnMarshalledRequestMessage,ti
 	}
 
 	fmt.Println(n)
-	fmt.Println(buf)
+	spew.Dump(buf[:n])
 	newReply,err := utils.UnMarshal(buf[:n])
 	if err!=nil{
 		return nil,err     

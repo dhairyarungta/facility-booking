@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/davecgh/go-spew/spew"
 )
 
 type Day byte
@@ -131,12 +132,15 @@ func Marshal(req *UnMarshalledRequestMessage) ([]byte, error) {
 		facilityNameLen := uint32(len(req.FacilityName))
 		facilityName := req.FacilityName
 
-		startTime := HourMinutesToMinutes(req.StartTime)
-		endTime := HourMinutesToMinutes(req.EndTime)
+		startTime := req.StartTime
+		endTime := req.EndTime
+
+		day := req.Days[0]
 
 		for _, data := range []interface{}{
 			facilityNameLen,
 			[]byte(facilityName),
+			day,
 			startTime,
 			endTime,
 		} {
@@ -146,6 +150,7 @@ func Marshal(req *UnMarshalledRequestMessage) ([]byte, error) {
 			}
 
 		}
+
 		break
 	case 103:
 		offset := req.Offset
@@ -208,6 +213,8 @@ func Marshal(req *UnMarshalledRequestMessage) ([]byte, error) {
 
 		}
 	}
+	fmt.Println(payloadLen)
+	spew.Dump(networkBuf.Bytes())
 	return networkBuf.Bytes(), nil
 }
 
@@ -298,12 +305,13 @@ func UnMarshal(incomingPacket []byte) (*UnMarshalledReplyMessage, error) {
 		if err := binary.Read(buf, binary.BigEndian, &numFacility); err != nil {
 			return nil, err
 		}
+		fmt.Printf("Number of Facilities %v",numFacility)
 		for _ = range numFacility {
 			var facilityNameLen uint32
 			if err := binary.Read(buf, binary.BigEndian, &facilityNameLen); err != nil {
 				return nil, err
 			}
-			facility := make([]byte, 0, facilityNameLen)
+			facility := make([]byte, facilityNameLen)
 			if err := binary.Read(buf, binary.BigEndian, &facility); err != nil {
 				return nil, err
 			}
