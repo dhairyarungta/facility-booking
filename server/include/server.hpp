@@ -757,9 +757,10 @@ public:
         switch (op)
        {
        case 101:
-    
-
-
+        assert(
+            msg.facilityName == "Student Lounge" 
+            && msg.days == std::vector<Day>{Day::Monday}
+        );
         replyMsg.availabilities = std::vector<std::pair<Day,std::vector<hourminute>>>{
             {
                 Day::Monday,
@@ -776,16 +777,41 @@ public:
         };
         break;
        case 102:
+        assert(
+            msg.startTime == hourminute({10,0})
+            && msg.endTime == hourminute({11,0})
+            && msg.days == std::vector<Day>{Day::Monday}
+        );
         break;
        case 103:
+        assert(
+            msg.offset == 60
+        );
         break;
        case 104:
+        assert(
+            msg.facilityName == "Student Lounge"
+            && msg.offset == 60
+        );
         break;
        case 105:
+        assert(
+            msg.facilityName == "Student Lounge"
+        );
+        replyMsg.capacity = 350;
         break;
        case 106:
+        assert(
+            msg.uid == 1
+        );
         break;
        case 107:
+        replyMsg.facilityNames = std::vector<std::string>{
+            "Fitness Center",
+            "Swimming Pool",
+            "Conference Hall",
+            "Research Library"
+        };
         break;
        default:
         assert(1==0);

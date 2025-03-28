@@ -85,7 +85,7 @@ func TestMarshalUnMarshal102(t *testing.T){
         ReqId: 1,
         Op: 102,
         Days: []utils.Day{
-            1,
+            '0',
         },
         StartTime: utils.HourMinutes{
             1,0,0,0,
@@ -113,7 +113,7 @@ func TestMarshalUnMarshal103(t *testing.T){
     newReq := utils.UnMarshalledRequestMessage{
         ReqId: 1,
         Op: 103,
-        Offset: 1,
+        Offset: 60,
     }
 
     res,err := client.SendMessage(newReq,5,true,1)
@@ -127,15 +127,26 @@ func TestMarshalUnMarshal103(t *testing.T){
 
 }
 
-// func TestMarshalUnMarshal104(t *testing.T){
-//     assert := assert.New(t)
-//     client := udp.NewUdpClient(IP)
+func TestMarshalUnMarshal104(t *testing.T){
+    assert := assert.New(t)
+    client := udp.NewUdpClient(IP)
 
-//     newReq := utils.UnMarshalledRequestMessage{
+    newReq := utils.UnMarshalledRequestMessage{
+        ReqId: 1,
+        Op: 104,
+        Offset: 60,
+        FacilityName: "Student Lounge",
+    }
 
-//     }
+    res,err := client.SendMessage(newReq,5,true,1)
+    if err!=nil{
+        fmt.Println(err)
+        os.Exit(1)
+    }
 
-// }
+    assert.Equal(104,res.Op)
+
+}
 
 
 func TestMarshalUnMarshal105(t *testing.T){
@@ -162,31 +173,31 @@ func TestMarshalUnMarshal106(t *testing.T){
     assert := assert.New(t)
     client := udp.NewUdpClient(IP)
 
-    createReq := utils.UnMarshalledRequestMessage{
-        ReqId: 1,
-        Op: 102,
-        Days: []utils.Day{
-            2,
-        },
-        StartTime: utils.HourMinutes{
-            1,0,0,0,
-        },
-        EndTime: utils.HourMinutes{
-            1,1,0,0,
-        },
-    }
+    // createReq := utils.UnMarshalledRequestMessage{
+    //     ReqId: 1,
+    //     Op: 102,
+    //     Days: []utils.Day{
+    //         2,
+    //     },
+    //     StartTime: utils.HourMinutes{
+    //         1,0,0,0,
+    //     },
+    //     EndTime: utils.HourMinutes{
+    //         1,1,0,0,
+    //     },
+    // }
 
-    res,err := client.SendMessage(createReq,5,true,1)
-    if err!=nil{
-        fmt.Println(err)
-        os.Exit(1)
-    }
+    // res,err := client.SendMessage(createReq,5,true,1)
+    // if err!=nil{
+    //     fmt.Println(err)
+    //     os.Exit(1)
+    // }
 
-    assert.Equal(102, res.Op)
+    // assert.Equal(102, res.Op)
 
     delReq := utils.UnMarshalledRequestMessage{
         ReqId: 2,
-        Uid: res.Uid,
+        Uid: 1,
         Op: 106,
     }
 
@@ -217,5 +228,11 @@ func TestMarshalUnMarshal107(t *testing.T){
     }
 
     assert.Equal(107, res.Op)
+    assert.Equal(res.FacilityNames,[]string{
+        "Fitness Center",
+        "Swimming Pool",
+        "Conference Hall",
+        "Research Library",
+    })
     spew.Dump(res)
 }
