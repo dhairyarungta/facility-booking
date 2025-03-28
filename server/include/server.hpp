@@ -153,6 +153,10 @@ public:
     Facility(std::string name, int capacity) : name(name), capacity(capacity) 
     { }
 
+    std::string getName(){
+        return name;
+    }
+
     std::vector<std::pair<Day, std::vector<hourminute>>> 
         queryAvail(std::vector<Day>& days) {
 
@@ -469,7 +473,7 @@ class Server {
 
     }
 
-    void query_request_handle(const UnmarshalledReplyMessage* msg, char* payload) {
+    void query_request_handle(const UnmarshalledReplyMessage* msg, char* payload, uint32_t* payloadLen) {
         int payloadIdx = 0;
         uint32_t numDays = htonl(msg->availabilities.size());
         memcpy(payload+payloadIdx, &numDays, sizeof(uint32_t));
@@ -557,8 +561,7 @@ class Server {
             (MarshalledMessage*) malloc(sizeof(MarshalledMessage) + size);
 
         *ptrTotalMsgSize = sizeof(MarshalledMessage) + size;
-        uint32_t op = htonl(msg->errorCode);
-        if (msg->errorCode != 100) return egressMsg;
+        uint32_t op = htonl(msg->op);
         uint32_t uid = htonl(msg->uid);
         uint32_t reqId = htonl(msg->reqID);
         egressMsg->op = op;
@@ -738,6 +741,56 @@ public:
         facility.cancelBooking(time, day);
         bookings.erase(uid);
         replyMsg.errorCode = 100;
+    }
+
+    void handleTest(UnmarshalledRequestMessage &msg, UnmarshalledReplyMessage&replyMsg){
+        uint32_t op = msg.op;
+        uint32_t uid = msg.uid;
+        uint32_t reqId = msg.reqID;
+
+        replyMsg.op = op;
+        replyMsg.uid = uid;
+        replyMsg.reqID = reqId;
+        replyMsg.errorCode = 100;
+        assert(reqId == 1);
+
+        switch (op)
+       {
+       case 101:
+    
+
+
+        replyMsg.availabilities = std::vector<std::pair<Day,std::vector<hourminute>>>{
+            {
+                Day::Monday,
+                {
+                {
+                    0,0
+
+                },
+                {
+                    23,59
+                }
+                }
+           }
+        };
+        break;
+       case 102:
+        break;
+       case 103:
+        break;
+       case 104:
+        break;
+       case 105:
+        break;
+       case 106:
+        break;
+       case 107:
+        break;
+       default:
+        assert(1==0);
+        break;
+       }
     }
 
 

@@ -26,12 +26,11 @@ func init(){
 		},
 	}
 
-	rootCmd.PersistentFlags().StringP("address","a","127.0.0.1:8080","address of facility server")
+	rootCmd.PersistentFlags().StringP("address","a","127.0.0.1:3000","address of facility server")
 	rootCmd.AddCommand(cmd.QueryAvailability)
 	rootCmd.AddCommand(cmd.CreateBooking)
 	rootCmd.AddCommand(cmd.UpdateBooking)
 	rootCmd.AddCommand(cmd.StartMonitoring)
-	rootCmd.AddCommand(cmd.TestMarshalUnMarshal)
 
 }
 
