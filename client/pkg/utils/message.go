@@ -14,19 +14,8 @@ type Day byte
 //Hour minutes each byte is a char
 type HourMinutes [4]byte
 
-func(hm *HourMinutes) toString() string{
-	tensHour := hm[0]
-	onesHour := hm[1]
-	tensMinute := hm[2]
-	onesMinute := hm[3]
-
-	buf := make([]byte,5)
-	buf = append(buf, tensHour)
-	buf = append(buf, onesHour)
-	buf = append(buf, ':')
-	buf = append(buf, tensMinute)
-	buf = append(buf, onesMinute)
-	return string(buf)
+func(hm *HourMinutes) ToString() string{
+	return fmt.Sprintf("%c%c:%c%c", hm[0], hm[1], hm[2], hm[3])
 }
 
 type TimeSlot struct {
@@ -96,8 +85,8 @@ func FormatReplyMessage(reply *UnMarshalledReplyMessage){
 			fmt.Printf("Availabilities for %v\n",CharToDay[byte(availability.Day)])
 			fmt.Printf("---------------------------\n")
 			for i,timeSlot := range availability.TimeSlots{
-				startTime := timeSlot.StartTime.toString()
-				endTime := timeSlot.EndTime.toString()
+				startTime := timeSlot.StartTime.ToString()
+				endTime := timeSlot.EndTime.ToString()
 				fmt.Printf("%v - StartTime: %v - EndTime %v\n", i+1,startTime,endTime)
 			}
 		}
