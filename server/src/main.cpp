@@ -6,7 +6,7 @@
 
 int main(){
     Facility gym("Fitness Center", 50);
-    Facility pool("Swimming Pool", 30));
+    Facility pool("Swimming Pool", 30);
     Facility conference("Conference Hall", 100);
     Facility library("Research Library", 75);
     Facility cafeteria("Main Cafeteria", 200);
