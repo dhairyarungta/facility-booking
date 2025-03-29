@@ -772,6 +772,7 @@ public:
                         (socklen_t) sizeof(it->client_addr));
 
                 it++;
+                free(egressMsg);
             }
             else {
                 it = facilityCallbacks.erase(it);
@@ -820,6 +821,8 @@ public:
         }
         std::cout << "UDP Server listening on port " << PORT << "...\n";
         std::cout << "TCP Server listening on port  " << TCP_PORT << "...\n";
+
+        const char* ack = "ACK";
         while (true) {
             socklen_t len = sizeof(client_addr);
             int n = recvfrom(sockfd, buffer, BUFFER_LEN, 0, (struct sockaddr *)&client_addr, &len);
@@ -832,8 +835,7 @@ public:
                 inet_ntoa(client_addr.sin_addr) << ":" << 
                 ntohs(client_addr.sin_port) << "\n";
 
-            const char* res = "ACK";
-            sendto(sockfd, res, 3, 0, (struct sockaddr *)&client_addr, len);  
+            sendto(sockfd, ack, 3, 0, (struct sockaddr *)&client_addr, len);  
             //server sends ACK to client for at least once invocation semantics
 
             UnmarshalledRequestMessage localMsg = 
@@ -890,6 +892,7 @@ public:
                 ( localMsg.op == 102 || localMsg.op == 103 || localMsg.op == 106 ) ) {
                 triggerCallback(tcpsock, localMsg, localEgress);
             }
+            free(egressMsg); 
         }
     }
 
