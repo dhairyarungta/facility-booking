@@ -18,6 +18,7 @@
 
 #define TESTMODE 1
 #define PORT 3000
+#define TCP_PORT 3001
 #define NUM_AVAIL 50 
 #define FACILITY_NAME_LEN 30
 #define BUFFER_LEN 10000 
@@ -136,17 +137,9 @@ class Facility {
         }
 
         auto it = std::upper_bound(reservations[day].begin(), reservations[day].end(), booking);
-
-        while (it != reservations[day].begin()) {
-            if (it->second <= booking.first) {
-                return true;
-            }
-            it--;
-        }
-        if (it->second <= booking.first) {
-            return true;
-        }
-        return false;
+        if (it == reservations[day].begin()) return true;
+        it--;
+        return it->second <= booking.first;
     }
 
 public:
@@ -160,7 +153,7 @@ public:
     std::vector<std::pair<Day, std::vector<hourminute>>> 
         queryAvail(std::vector<Day>& days) {
 
-        std::vector<std::pair<Day, std::vector<hourminute>>> availabilities;
+        std::vector<std::pair<Day, std::vector<hourminute>>> availabilities; //avails are in timestamps in minutes {startMinute, endMinute}
         for (auto day : days) {
             if (!reservations[day].size()) {
                 availabilities.push_back({day, {{0, 1439}}});
@@ -202,11 +195,12 @@ public:
         int endTime = hourToTimestamp(booking.second)+offset;
         bookStruct updatedBooking = {timestampToHour(startTime), timestampToHour(endTime)};
         //can add additional logic for when offset forces day to spill over to next or previous
+        reservations[day].erase(booking);
         if (isWellOrdered(updatedBooking, day)) {
-            reservations[day].erase(booking);
             reservations[day].insert(updatedBooking);
             return true;
         }
+        reservations[day].insert(booking);
         return false;
     }
     int queryCapacity() {
@@ -251,6 +245,7 @@ public:
     Facility name length (uint32_t)
     Facility name (char), non '\0' ending
     int32_t : offset in minutes (monitor interval, signed but always > 0)
+    uint16_t : port (port on which to send TCP callback msgs)
     =========================================
 
     105 - QUERY_CAPACITY
@@ -334,7 +329,7 @@ struct UnmarshalledRequestMessage {
     std::string facilityName ;
     hourminute startTime; //times are represented as {1 1, 59} for 11:59
     hourminute endTime;
-
+    uint16_t port; //TCP port for 104
     int32_t offset; 
     //signed, in minutes
     //monitoring interval for a callback (max over a week = 1080 mins)
@@ -522,6 +517,8 @@ class Server {
             payloadIdx += facilityNameLen;
 
             msg.offset = ntohl(*reinterpret_cast< int32_t* >(payload + payloadIdx));
+            payloadIdx += sizeof(int32_t);
+            msg.port = *reinterpret_cast<uint32_t*>(payload+payloadIdx);
     }
 
     void update_request_handle (UnmarshalledRequestMessage& msg, char* payload, 
@@ -704,6 +701,7 @@ public:
             replyMsg.errorCode = 200;
             return;
         }
+        client_addr.sin_port = msg.port; //add TCP port instead of UDP
         callbackMap[msg.facilityName].insert( CallbackInfo(client_addr, recv_time, msg.offset) );
         // insert callback in the map, for the particular facility name
         replyMsg.errorCode = 100;
@@ -860,6 +858,7 @@ public:
                         (socklen_t) sizeof(it->client_addr));
 
                 it++;
+                free(egressMsg);
             }
             else {
                 it = facilityCallbacks.erase(it);
@@ -869,8 +868,8 @@ public:
 
     char buffer[BUFFER_LEN];
     int serve() {
-        int sockfd;
-        struct sockaddr_in server_addr, client_addr;
+        int sockfd, tcpsock;
+        struct sockaddr_in server_addr, server_tcp_addr, client_addr;
 
         // Create UDP socket
         sockfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -878,7 +877,12 @@ public:
             perror("Socket creation failed");
             return EXIT_FAILURE;
         }
-
+        //create TCP socket for callbacks
+        tcpsock = socket(AF_INET, SOCK_STREAM, 0);
+        if (tcpsock < 0) {
+            perror("Socket creation failed for TCP");
+            return EXIT_FAILURE;
+        }
         // Configure server address structure
         memset(&server_addr, 0, sizeof(server_addr));
         server_addr.sin_family = AF_INET;
@@ -891,9 +895,20 @@ public:
             close(sockfd);
             return EXIT_FAILURE;
         }
-
+        memset(&server_tcp_addr, 0, sizeof(server_tcp_addr));
+        server_tcp_addr.sin_family = AF_INET;
+        server_tcp_addr.sin_addr.s_addr = INADDR_ANY;
+        server_tcp_addr.sin_port = htons(TCP_PORT);
+        //Bind TCP socket to port
+        if (bind(tcpsock, (const struct sockaddr *)&server_tcp_addr, sizeof(server_tcp_addr)) < 0) {
+            perror("Bind TCP failed");
+            close(tcpsock);
+            return EXIT_FAILURE;
+        }
         std::cout << "UDP Server listening on port " << PORT << "...\n";
+        std::cout << "TCP Server listening on port  " << TCP_PORT << "...\n";
 
+        const char* ack = "ACK";
         while (true) {
             socklen_t len = sizeof(client_addr);
             int n = recvfrom(sockfd, buffer, BUFFER_LEN, 0, (struct sockaddr *)&client_addr, &len);
@@ -906,8 +921,7 @@ public:
                 inet_ntoa(client_addr.sin_addr) << ":" << 
                 ntohs(client_addr.sin_port) << "\n";
 
-            const char* res = "ACK";
-            sendto(sockfd, res, 3, 0, (struct sockaddr *)&client_addr, len);  
+            sendto(sockfd, ack, 3, 0, (struct sockaddr *)&client_addr, len);  
             //server sends ACK to client for at least once invocation semantics
 
             UnmarshalledRequestMessage localMsg = 
@@ -966,8 +980,9 @@ public:
             sendto(sockfd, buffer, totalMsgSize, 0, (struct sockaddr*) &client_addr, len);
             if ( localEgress.errorCode == 100 &&  
                 ( localMsg.op == 102 || localMsg.op == 103 || localMsg.op == 106 ) ) {
-                triggerCallback(sockfd, localMsg, localEgress);
+                triggerCallback(tcpsock, localMsg, localEgress);
             }
+            free(egressMsg); 
         }
     }
 
