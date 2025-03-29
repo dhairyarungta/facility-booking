@@ -342,7 +342,6 @@ struct UnmarshalledRequestMessage {
 }; 
 
 struct UnmarshalledReplyMessage {
-    uint32_t reqID; //field for testing to remove later
     uint32_t uid; //confirmation ID given by server
     uint32_t op; //operation that was performed
     uint32_t errorCode; //error code if revelant
@@ -563,14 +562,16 @@ class Server {
             (MarshalledMessage*) malloc(sizeof(MarshalledMessage) + size);
 
         *ptrTotalMsgSize = sizeof(MarshalledMessage) + size;
+
+        if (msg->errorCode != 100){
+            egressMsg->op = msg->errorCode;
+            return egressMsg;
+        } 
         uint32_t op = htonl(msg->op);
         uint32_t uid = htonl(msg->uid);
-        uint32_t reqId = htonl(msg->reqID);
+        egressMsg->payloadLen = htonl(size);
         egressMsg->op = op;
         egressMsg->uid = uid;
-        egressMsg->reqID = reqId;
-        if (msg->errorCode != 100) return egressMsg;
-        egressMsg->payloadLen = htonl(size);
         switch (msg->op) {
             case 101 : 
                 query_request_handle(msg, egressMsg->payload);
@@ -753,7 +754,6 @@ public:
 
         replyMsg.op = op;
         replyMsg.uid = uid;
-        replyMsg.reqID = reqId;
         replyMsg.errorCode = 100;
         assert(reqId == 1);
 
@@ -961,6 +961,7 @@ public:
 
             int totalMsgSize = 0; 
             MarshalledMessage* egressMsg = marshal(&localEgress, &totalMsgSize);
+            egressMsg->reqID = localMsg.reqID;
             memcpy(buffer, egressMsg, totalMsgSize);
             sendto(sockfd, buffer, totalMsgSize, 0, (struct sockaddr*) &client_addr, len);
             if ( localEgress.errorCode == 100 &&  

@@ -11,6 +11,7 @@ import (
 
 type Day byte
 
+//Hour minutes each byte is a char
 type HourMinutes [4]byte
 
 type TimeSlot struct {
@@ -82,21 +83,21 @@ func MinutesToHourMinutes(dayMinutes [4]byte, incomingFromNetwork bool) HourMinu
 	onesMinute := minutes % 10
 
 	hourMinutes := HourMinutes{
-		byte(tensHour),
-		byte(onesHour),
-		byte(tensMinute),
-		byte(onesMinute),
+		byte(tensHour + '0'),
+		byte(onesHour + '0'),
+		byte(tensMinute + '0'),
+		byte(onesMinute + '0'),
 	}
 	return hourMinutes
 }
 
 func HourMinutesToMinutes( hourMinutes HourMinutes) [4]byte{
-	tensHour := uint32(hourMinutes[0]) * 10
-	onesHour := uint32(hourMinutes[1])
+	tensHour := uint32(hourMinutes[0] - '0') * 10
+	onesHour := uint32(hourMinutes[1] - '0')
 	hour := tensHour + onesHour
 
-	tensMinute := uint32(hourMinutes[2]) * 10
-	onesMinute := uint32(hourMinutes[3])
+	tensMinute := uint32(hourMinutes[2] -'0') * 10
+	onesMinute := uint32(hourMinutes[3] - '0')
 	minutes := tensMinute + onesMinute
 
 	time := hour * 60 + minutes

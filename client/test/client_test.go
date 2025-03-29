@@ -19,10 +19,10 @@ const (
 func TestMinutesToHourMinutes(t *testing.T){
     assert := assert.New(t)
     hourMinutes := utils.HourMinutes{
-        2,
-        3,
-        5,
-        9,
+        '2',
+        '3',
+        '5',
+        '9',
     }
 
     dayMinutes := utils.HourMinutesToMinutes(hourMinutes)
@@ -34,6 +34,7 @@ func TestMinutesToHourMinutes(t *testing.T){
     returnedHourMinutes := utils.MinutesToHourMinutes(dayMinutes,false)
 
     assert.Equal(hourMinutes,returnedHourMinutes)
+    spew.Dump(returnedHourMinutes)
 
 
 
@@ -65,10 +66,10 @@ func TestMarshalUnMarshal101(t *testing.T){
     assert.Equal(num, res.Op)
     assert.Equal(utils.TimeSlot{
         StartTime: utils.HourMinutes{
-            0,0,0,0,
+            '0','0','0','0',
         },
         EndTime: utils.HourMinutes{
-            2,3,5,9,
+            '2','3','5','9',
         },
     }, res.Availabilities[0].TimeSlots[0])
 
@@ -236,3 +237,4 @@ func TestMarshalUnMarshal107(t *testing.T){
     },res.FacilityNames)
     spew.Dump(res)
 }
+
