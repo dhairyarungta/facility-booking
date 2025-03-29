@@ -31,6 +31,7 @@ func init(){
 	rootCmd.AddCommand(cmd.CreateBooking)
 	rootCmd.AddCommand(cmd.UpdateBooking)
 	rootCmd.AddCommand(cmd.StartMonitoring)
+	rootCmd.AddCommand(cmd.TestMarshalUnMarshal)
 
 }
 
