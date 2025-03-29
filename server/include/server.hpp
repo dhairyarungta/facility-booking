@@ -240,7 +240,7 @@ public:
     Facility name length (uint32_t)
     Facility name (char), non '\0' ending
     int32_t : offset in minutes (monitor interval, signed but always > 0)
-    uint32_t : port (port on which to send TCP callback msgs)
+    uint16_t : port (port on which to send TCP callback msgs)
     =========================================
 
     105 - QUERY_CAPACITY
@@ -323,7 +323,7 @@ struct UnmarshalledRequestMessage {
     std::string facilityName ;
     hourminute startTime; //times are represented as {1 1, 59} for 11:59
     hourminute endTime;
-    uint32_t port; //TCP port for 104
+    uint16_t port; //TCP port for 104
     int32_t offset; 
     //signed, in minutes
     //monitoring interval for a callback (max over a week = 1080 mins)
