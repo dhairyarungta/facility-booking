@@ -144,6 +144,9 @@ class Facility {
 public:
     Facility(std::string name, int capacity) : name(name), capacity(capacity) 
     { }
+    std::string getName(){
+        return name;
+    }
 
     std::vector<std::pair<Day, std::vector<hourminute>>> 
         queryAvail(std::vector<Day>& days) {
@@ -549,11 +552,15 @@ class Server {
             (MarshalledMessage*) malloc(sizeof(MarshalledMessage) + size);
 
         *ptrTotalMsgSize = sizeof(MarshalledMessage) + size;
-        uint32_t op = htonl(msg->errorCode);
-        if (msg->errorCode != 100) return egressMsg;
+        if(msg->errorCode != 100){
+            egressMsg->op = msg->errorCode;
+            return egressMsg;
+        }
+        uint32_t op = htonl(msg->op);
         uint32_t uid = htonl(msg->uid);
         egressMsg->op = op;
         egressMsg->uid = uid;
+        egressMsg->payloadLen = htonl(size);
         switch (msg->op) {
             case 101 : 
                 query_request_handle(msg, egressMsg->payload);
