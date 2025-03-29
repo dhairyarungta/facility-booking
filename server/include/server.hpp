@@ -135,17 +135,9 @@ class Facility {
         }
 
         auto it = std::upper_bound(reservations[day].begin(), reservations[day].end(), booking);
-
-        while (it != reservations[day].begin()) {
-            if (it->second <= booking.first) {
-                return true;
-            }
-            it--;
-        }
-        if (it->second <= booking.first) {
-            return true;
-        }
-        return false;
+        if (it == reservations[day].begin()) return true;
+        it--;
+        return it->second <= booking.first;
     }
 
 public:
@@ -155,7 +147,7 @@ public:
     std::vector<std::pair<Day, std::vector<hourminute>>> 
         queryAvail(std::vector<Day>& days) {
 
-        std::vector<std::pair<Day, std::vector<hourminute>>> availabilities;
+        std::vector<std::pair<Day, std::vector<hourminute>>> availabilities; //avails are in timestamps in minutes {startMinute, endMinute}
         for (auto day : days) {
             if (!reservations[day].size()) {
                 availabilities.push_back({day, {{0, 1439}}});
@@ -197,11 +189,12 @@ public:
         int endTime = hourToTimestamp(booking.second)+offset;
         bookStruct updatedBooking = {timestampToHour(startTime), timestampToHour(endTime)};
         //can add additional logic for when offset forces day to spill over to next or previous
+        reservations[day].erase(booking);
         if (isWellOrdered(updatedBooking, day)) {
-            reservations[day].erase(booking);
             reservations[day].insert(updatedBooking);
             return true;
         }
+        reservations[day].insert(booking);
         return false;
     }
     int queryCapacity() {
