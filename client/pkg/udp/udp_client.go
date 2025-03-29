@@ -26,8 +26,14 @@ func NewUdpClient(hostAddr string) UdpClient {
 //blocking function that formats Facility Updates on each incoming callback
 func (client *UdpClient) WatchMessage( message utils.UnMarshalledRequestMessage,watchInterval int,ackTimeout int,retransmission bool,maxRetries int) error {
 	conn, err := net.Dial("udp4",client.HostAddr)
+	if err!=nil{
+		return err
+	}
 	localIp := conn.LocalAddr()
 	localAddr, port, err := net.SplitHostPort(localIp.String())
+	if err!=nil{
+		return err
+	}
 	sockPort,err := strconv.Atoi(port)
 	message.Port = uint16(sockPort)
 	if err!=nil{
@@ -44,6 +50,9 @@ func (client *UdpClient) WatchMessage( message utils.UnMarshalledRequestMessage,
 		count := 0
 		for count < maxRetries {
 			_,err := conn.Write(data)
+			if err!=nil{
+				return err
+			}
 			_,err = conn.Read(ackBuf)
 			if err !=nil{
 				return err
@@ -112,6 +121,9 @@ func (client *UdpClient) SendMessage(message utils.UnMarshalledRequestMessage,ti
 		count := 0
 		for count < maxRetries{
 			_, err = conn.Write(data)
+			if err!=nil{
+				return nil,err
+			}
 			_,err := conn.Read(ackBuf)
 			if err!=nil{
 				return nil, err
