@@ -144,6 +144,9 @@ class Facility {
 public:
     Facility(std::string name, int capacity) : name(name), capacity(capacity) 
     { }
+    std::string getName(){
+        return name;
+    }
 
     std::vector<std::pair<Day, std::vector<hourminute>>> 
         queryAvail(std::vector<Day>& days) {
@@ -201,11 +204,17 @@ public:
     int queryCapacity() {
         return capacity; //idempotent service
     }
-    bool cancelBooking(bookStruct bookTime, Day day) {
-        //non-idempotent service, server side occurs via confirmation ID
-        if (!reservations[day].contains(bookTime)) return false;
-        reservations[day].erase(bookTime);
-        return true;
+    bool updateLength(Day day, bookStruct booking, int32_t offset) {
+        int endTime = hourToTimestamp(booking.second).offset;
+        bookStruct updateBooking = {booking.first, timestampToHour(endTime)};
+
+        reservations[day].erase(booking);
+        if (isWellOrdered(updatedBooking, day)) {
+            reservations[day].insert(updatedBooking);
+            return true;
+        }
+        reservations[day].insert(booking);
+        return false;
     }
 };
 
@@ -248,9 +257,10 @@ public:
     Facility name (char), non '\0' ending
     =========================================
 
-    106 - DELETE/CANCEL 
+    106 - UPDATE LENGTH 
     Dependent on uid, sent previously on create booking (102) reply
-    Payload: empty
+    Payload:
+    int32_t : offset in minutes (signed)
     =========================================
 
     107 - GET ALL FACILITY NAMES
@@ -296,7 +306,7 @@ public:
     capacity - 4 bytes
     ==================
 
-    106 - DELETE
+    106 - UPDATE LENGTH
     No payload. Only acknowledgement in form of error code.
     ==================
      
@@ -549,11 +559,15 @@ class Server {
             (MarshalledMessage*) malloc(sizeof(MarshalledMessage) + size);
 
         *ptrTotalMsgSize = sizeof(MarshalledMessage) + size;
-        uint32_t op = htonl(msg->errorCode);
-        if (msg->errorCode != 100) return egressMsg;
+        if(msg->errorCode != 100){
+            egressMsg->op = msg->errorCode;
+            return egressMsg;
+        }
+        uint32_t op = htonl(msg->op);
         uint32_t uid = htonl(msg->uid);
         egressMsg->op = op;
         egressMsg->uid = uid;
+        egressMsg->payloadLen = htonl(size);
         switch (msg->op) {
             case 101 : 
                 query_request_handle(msg, egressMsg->payload);
@@ -598,7 +612,7 @@ class Server {
                 query_capacity_handle(localMsg, msg->payload, payloadLen);
                 break;
             case 106:
-                // nothing to do, only uses uid
+                update_request_handle(localMsg, msg->payloadm payloadLen);
                 break;
             case 107:
                 // No need to modify the unmarshalled request msg
@@ -713,20 +727,26 @@ public:
         replyMsg.errorCode = 100; 
     }
 
-    void handleDelete(UnmarshalledRequestMessage& msg, UnmarshalledReplyMessage& replyMsg) {
+    void handleLen(UnmarshalledRequestMessage& msg, UnmarshalledReplyMessage& replyMsg) {
         replyMsg.op = 106;
         uint32_t uid = msg.uid;
         if (bookings.find(uid) == bookings.end()) {
             replyMsg.errorCode = 400;
             return;
         }
-        bookStruct time = bookings[uid].second;
-        Day day = bookings[uid].first.second;
-        std::string facilityName = bookings[uid].first.first;
+        serverBooking booking = bookings[uid];
+        std::string facilityName = booking.first.first;
+        Day day = booking.first.second;
+        bookStruct time = booking.second;
         Facility facility = facilities.at(facilityName);
-        facility.cancelBooking(time, day);
-        bookings.erase(uid);
+        int32_t offset = msg.offset;
+        bool success = facility.updateLength(day, time, offset);
+        if (!success) {
+            replyMsg.errorCode = 400;
+            return;
+        }
         replyMsg.errorCode = 100;
+        bookings[uid] = {{facilityName, day}, time};
     }
 
 
@@ -823,7 +843,9 @@ public:
         std::cout << "TCP Server listening on port  " << TCP_PORT << "...\n";
 
         const char* ack = "ACK";
+        bool duplicate = false;
         while (true) {
+            duplicate = false;
             socklen_t len = sizeof(client_addr);
             int n = recvfrom(sockfd, buffer, BUFFER_LEN, 0, (struct sockaddr *)&client_addr, &len);
             if (n < 0) {
@@ -865,7 +887,7 @@ public:
                         handleCapacity(localMsg, localEgress);
                         break;
                     case 106 :
-                        handleDelete(localMsg, localEgress);
+                        handleLen(localMsg, localEgress);
                         break;
                     case 107 : 
                         handleFacilityNames(localMsg, localEgress);
@@ -877,6 +899,7 @@ public:
             }
             else {
                 localEgress = replyCache[localMsg.reqID];
+                duplicate = true;
             }
 
             // Echo back the received message
@@ -889,7 +912,7 @@ public:
             memcpy(buffer, egressMsg, totalMsgSize);
             sendto(sockfd, buffer, totalMsgSize, 0, (struct sockaddr*) &client_addr, len);
             if ( localEgress.errorCode == 100 &&  
-                ( localMsg.op == 102 || localMsg.op == 103 || localMsg.op == 106 ) ) {
+                ( localMsg.op == 102 || localMsg.op == 103 || localMsg.op == 106 ) && !duplicate) {
                 triggerCallback(tcpsock, localMsg, localEgress);
             }
             free(egressMsg); 
