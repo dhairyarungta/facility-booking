@@ -1,13 +1,11 @@
 package test
 
 import (
-	"encoding/binary"
 	"fmt"
 	"os"
 	"testing"
-
-	"github.com/davecgh/go-spew/spew"
 	"github.com/dhairyarungta/facility-booking/client/pkg/udp"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/dhairyarungta/facility-booking/client/pkg/utils"
 	"github.com/stretchr/testify/assert"
 )
@@ -16,27 +14,18 @@ const (
     IP string = "localhost:3000"
 )
 
-func TestMinutesToHourMinutes(t *testing.T){
+func TestHourMinutesToString(t *testing.T){
     assert := assert.New(t)
-    hourMinutes := utils.HourMinutes{
+    hm := utils.HourMinutes{
         '2',
         '3',
         '5',
         '9',
     }
+    spew.Dump(hm)
 
-    dayMinutes := utils.HourMinutesToMinutes(hourMinutes)
-
-    var buf [4]byte
-    binary.NativeEndian.PutUint32(buf[:],1439)
-    assert.Equal(buf,dayMinutes)
-
-    returnedHourMinutes := utils.MinutesToHourMinutes(dayMinutes,false)
-
-    assert.Equal(hourMinutes,returnedHourMinutes)
-    spew.Dump(returnedHourMinutes)
-
-
+    time := "23:59"
+    assert.Equal(time,hm.ToString())
 
 }
 

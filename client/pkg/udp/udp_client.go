@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
@@ -19,6 +21,86 @@ type UdpClient struct {
 func NewUdpClient(hostAddr string) UdpClient {
 	return UdpClient{
 		HostAddr: hostAddr,
+	}
+}
+
+//blocking function that formats Facility Updates on each incoming callback
+func (client *UdpClient) WatchMessage( message utils.UnMarshalledRequestMessage,watchInterval int,ackTimeout int,retransmission bool,maxRetries int) error {
+	conn, err := net.Dial("udp4",client.HostAddr)
+	if err!=nil{
+		return err
+	}
+	localIp := conn.LocalAddr()
+	localAddr, port, err := net.SplitHostPort(localIp.String())
+	if err!=nil{
+		return err
+	}
+	sockPort,err := strconv.Atoi(port)
+	message.Port = uint16(sockPort)
+	if err!=nil{
+		return err
+	}
+	conn.SetDeadline(time.Now().Add(time.Duration(ackTimeout)*time.Second))
+	data, err := utils.Marshal(&message)
+	if err!=nil{
+		return err
+	}
+
+	if(retransmission){
+		ackBuf := make([]byte,3)
+		count := 0
+		for count < maxRetries {
+			_,err := conn.Write(data)
+			if err!=nil{
+				return err
+			}
+			_,err = conn.Read(ackBuf)
+			if err !=nil{
+				return err
+			}
+			if(string(ackBuf) == "ACK"){
+				fmt.Printf("Recieved Ack %v",ackBuf)
+				break
+			}
+			count ++
+		}
+		if(count == maxRetries){
+			return errors.New("reached max retries")
+		}
+		
+	}
+	conn.Close()
+	tcpAddr := net.TCPAddr{
+		IP: net.ParseIP(localAddr),
+		Port: sockPort,
+	}
+	tcpListener, err := net.ListenTCP("tcp4",&tcpAddr)
+	if err!=nil{
+		return err
+	}
+	conn, err = tcpListener.Accept()
+	if err!=nil{
+		return err
+	}
+	conn.SetDeadline(time.Now().Add(time.Duration(watchInterval)*time.Minute))
+	buf := make([]byte,1024)
+	for {
+		n, err := conn.Read(buf)
+		if errors.Is(err,io.EOF){
+			return errors.New("server closed connection")
+		}
+		if errors.Is(err,os.ErrDeadlineExceeded){
+			fmt.Println("timeout exceeded")
+			return nil
+		}
+		if err !=nil{
+			return err
+		}
+		newReply,err := utils.UnMarshal(buf[:n])
+		if err!=nil{
+			return err
+		}
+		utils.FormatReplyMessage(newReply)
 	}
 }
 
@@ -40,6 +122,9 @@ func (client *UdpClient) SendMessage(message utils.UnMarshalledRequestMessage,ti
 		count := 0
 		for count < maxRetries{
 			_, err = conn.Write(data)
+			if err!=nil{
+				return nil,err
+			}
 			_,err := conn.Read(ackBuf)
 			if err!=nil{
 				return nil, err

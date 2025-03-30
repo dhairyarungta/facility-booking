@@ -14,6 +14,10 @@ type Day byte
 //Hour minutes each byte is a char
 type HourMinutes [4]byte
 
+func(hm *HourMinutes) ToString() string{
+	return fmt.Sprintf("%c%c:%c%c", hm[0], hm[1], hm[2], hm[3])
+}
+
 type TimeSlot struct {
 	StartTime HourMinutes
 	EndTime   HourMinutes
@@ -34,6 +38,16 @@ const (
 	Sunday
 )
 
+var CharToDay = map[byte]string{
+	byte(Monday):    "Monday",
+	byte(Tuesday):   "Tuesday",
+	byte(Wednesday): "Wednesday",
+	byte(Thursday):  "Thursday",
+	byte(Friday):    "Friday",
+	byte(Saturday):  "Saturday",
+	byte(Sunday):    "Sunday",
+}
+
 type marshalledMessage struct {
 	reqId      uint32
 	uid        uint32
@@ -47,6 +61,7 @@ type UnMarshalledRequestMessage struct {
 	ReqId        uint32
 	Uid          uint32
 	Op           uint32
+	Port	     uint16
 	Days         []Day
 	FacilityName string
 	StartTime    HourMinutes
@@ -61,6 +76,45 @@ type UnMarshalledReplyMessage struct {
 	Capacity       uint32
 	FacilityNames  []string
 	Availabilities []Availability
+}
+
+func FormatReplyMessage(reply *UnMarshalledReplyMessage){
+	switch reply.Op {
+	case 101:
+		for _,availability := range reply.Availabilities{
+			fmt.Printf("Availabilities for %v\n",CharToDay[byte(availability.Day)])
+			fmt.Printf("---------------------------\n")
+			for i,timeSlot := range availability.TimeSlots{
+				startTime := timeSlot.StartTime.ToString()
+				endTime := timeSlot.EndTime.ToString()
+				fmt.Printf("%v - StartTime: %v - EndTime %v\n", i+1,startTime,endTime)
+			}
+		}
+	case 102:
+		fmt.Printf("Booking %v successfully created\n",reply.Uid)
+	case 103:
+		fmt.Printf("Update successful %v OK\n",reply.Op)
+	case 104:
+		fmt.Printf("Callback registered successfully %v OK\n",reply.Op)
+	case 105:
+		fmt.Printf("Total Capacity: %v\n",reply.Capacity)
+	case 106:
+		fmt.Printf("Update successful %v OK\n",reply.Op)
+	case 107:
+		fmt.Printf("Available facilities for booking\n")
+		fmt.Printf("--------------------------------\n")
+		for i,facilityName := range reply.FacilityNames{
+			fmt.Printf("%v - %v\n",i+1,facilityName)
+		}
+	case 200:
+		fmt.Printf("Error %v: Invalid facility name\n",reply.Op)
+	case 300:
+		fmt.Printf("Error %v: Facility unavailable during requested timeslot",reply.Op)
+	case 400:
+		fmt.Printf("Error %v: Invalid booking confirmation id\n",reply.Op)
+	default:
+		fmt.Print("Invalid Op Code")
+	}
 }
 
 //function will be used for converting server representation to client side for easy format
@@ -164,10 +218,12 @@ func Marshal(req *UnMarshalledRequestMessage) ([]byte, error) {
 		facilityNameLen := uint32(len(req.FacilityName))
 		facilityName := req.FacilityName
 		offset := req.Offset
+		port := req.Port
 		for _, data := range []interface{}{
 			facilityNameLen,
 			[]byte(facilityName),
 			offset,
+			port,
 		} {
 			err := binary.Write(&buf, binary.BigEndian, data)
 			if err != nil {
@@ -191,6 +247,11 @@ func Marshal(req *UnMarshalledRequestMessage) ([]byte, error) {
 		}
 		break
 	case 106:
+		offset := req.Offset
+		err := binary.Write(&buf,binary.BigEndian,offset)
+		if err!=nil{
+			return nil,err
+		}
 		break
 	case 107:
 		break
