@@ -93,13 +93,13 @@ func FormatReplyMessage(reply *UnMarshalledReplyMessage){
 	case 102:
 		fmt.Printf("Booking %v successfully created\n",reply.Uid)
 	case 103:
-		fmt.Printf("Update sucessful %v OK\n",reply.Op)
+		fmt.Printf("Update successful %v OK\n",reply.Op)
 	case 104:
 		fmt.Printf("Callback registered successfully %v OK\n",reply.Op)
 	case 105:
 		fmt.Printf("Total Capacity: %v\n",reply.Capacity)
 	case 106:
-		fmt.Printf("Deletion of booking successful %v OK\n",reply.Op)
+		fmt.Printf("Update successful %v OK\n",reply.Op)
 	case 107:
 		fmt.Printf("Available facilities for booking\n")
 		fmt.Printf("--------------------------------\n")
@@ -247,6 +247,11 @@ func Marshal(req *UnMarshalledRequestMessage) ([]byte, error) {
 		}
 		break
 	case 106:
+		offset := req.Offset
+		err := binary.Write(&buf,binary.BigEndian,offset)
+		if err!=nil{
+			return nil,err
+		}
 		break
 	case 107:
 		break

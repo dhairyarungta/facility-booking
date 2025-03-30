@@ -205,8 +205,8 @@ public:
         return capacity; //idempotent service
     }
     bool updateLength(Day day, bookStruct booking, int32_t offset) {
-        int endTime = hourToTimestamp(booking.second).offset;
-        bookStruct updateBooking = {booking.first, timestampToHour(endTime)};
+        int endTime = hourToTimestamp(booking.second) + offset;
+        bookStruct updatedBooking = {booking.first, timestampToHour(endTime)};
 
         reservations[day].erase(booking);
         if (isWellOrdered(updatedBooking, day)) {
@@ -612,7 +612,7 @@ class Server {
                 query_capacity_handle(localMsg, msg->payload, payloadLen);
                 break;
             case 106:
-                update_request_handle(localMsg, msg->payloadm payloadLen);
+                update_request_handle(localMsg, msg->payload,payloadLen);
                 break;
             case 107:
                 // No need to modify the unmarshalled request msg
