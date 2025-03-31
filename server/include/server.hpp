@@ -135,7 +135,7 @@ class Facility {
             return true;
         }
 
-        auto it = std::upper_bound(reservations[day].begin(), reservations[day].end(), booking);
+        auto it = std::upper_bound(reservations[day].begin(), reservations[day].end(), booking, compareBookStruct);
         if (it == reservations[day].begin()) return true;
         it--;
         return it->second <= booking.first;
@@ -153,7 +153,7 @@ public:
 
         std::vector<std::pair<Day, std::vector<hourminute>>> availabilities; //avails are in timestamps in minutes {startMinute, endMinute}
         for (auto day : days) {
-            if (!reservations[day].size()) {
+            if (reservations[day].size() <= 0) {
                 availabilities.push_back({day, {{0, 1439}}});
             }
             else {
@@ -181,17 +181,37 @@ public:
         return availabilities;
     }
     bool bookFacility(Day day, bookStruct bookTime) {
-        if (isWellOrdered(bookTime, day)) {
+
+        if (isWellOrdered(bookTime, day) && bookTime.second > bookTime.first) {
             reservations[day].insert(bookTime);
             return true;
         }
         return false;
-        
     }
-    bool updateBooking(Day day, bookStruct booking, int32_t offset) {
+    
+    void printReservations(Day day) {
+        std::cout << "Reservations for day " << static_cast<int>(day) - static_cast<int>(Day::Monday) << ":" << std::endl;
+        if (reservations[day].empty()) {
+            std::cout << "  No reservations" << std::endl;
+            return;
+        }
+        
+        for (const auto& booking : reservations[day]) {
+            std::cout << "  " << booking.first.first << ":" 
+                     << (booking.first.second < 10 ? "0" : "") << booking.first.second
+                     << " - " << booking.second.first << ":" 
+                     << (booking.second.second < 10 ? "0" : "") << booking.second.second 
+                     << std::endl;
+        }
+    }
+    bool updateBooking(Day day, bookStruct booking, int32_t offset,bookStruct &newBooking) {
         int startTime = hourToTimestamp(booking.first)+offset;
         int endTime = hourToTimestamp(booking.second)+offset;
+        if (startTime >= 1439 || endTime > 1439){
+            return false;
+        }
         bookStruct updatedBooking = {timestampToHour(startTime), timestampToHour(endTime)};
+        newBooking = updatedBooking;
         //can add additional logic for when offset forces day to spill over to next or previous
         reservations[day].erase(booking);
         if (isWellOrdered(updatedBooking, day)) {
@@ -204,10 +224,13 @@ public:
     int queryCapacity() {
         return capacity; //idempotent service
     }
-    bool updateLength(Day day, bookStruct booking, int32_t offset) {
+    bool updateLength(Day day, bookStruct booking, int32_t offset, bookStruct &newBooking) {
         int endTime = hourToTimestamp(booking.second) + offset;
+        if(endTime > 1439){
+            return false;
+        }
         bookStruct updatedBooking = {booking.first, timestampToHour(endTime)};
-
+        newBooking = updatedBooking;
         reservations[day].erase(booking);
         if (isWellOrdered(updatedBooking, day)) {
             reservations[day].insert(updatedBooking);
@@ -520,7 +543,7 @@ class Server {
 
             msg.offset = ntohl(*reinterpret_cast< int32_t* >(payload + payloadIdx));
             payloadIdx += sizeof(int32_t);
-            msg.port = *reinterpret_cast<uint32_t*>(payload+payloadIdx);
+            msg.port = ntohs(*reinterpret_cast<uint16_t*>(payload+payloadIdx));
     }
 
     void update_request_handle (UnmarshalledRequestMessage& msg, char* payload, 
@@ -560,7 +583,7 @@ class Server {
 
         *ptrTotalMsgSize = sizeof(MarshalledMessage) + size;
         if(msg->errorCode != 100){
-            egressMsg->op = msg->errorCode;
+            egressMsg->op = htonl(msg->errorCode);
             return egressMsg;
         }
         uint32_t op = htonl(msg->op);
@@ -595,7 +618,7 @@ class Server {
         
         int payloadIndex = 4*sizeof(uint32_t);
         
-        switch (localMsg.uid) {
+        switch (localMsg.op) {
             case 101:
                 query_request_handle(localMsg, msg->payload, payloadLen);
                 break;
@@ -637,7 +660,7 @@ public:
             replyMsg.errorCode = 200;
             return;
         }
-        auto facility = facilities.at(facilityName);
+        Facility &facility = facilities.at(facilityName);
         replyMsg.availabilities = std::move(facility.queryAvail(days));
         replyMsg.errorCode = 100;
     }
@@ -650,20 +673,22 @@ public:
             replyMsg.errorCode = 200;
             return;
         }
-        Facility facility = facilities.at(facilityName);
+        Facility& facility = facilities.at(facilityName);
         hourminute startTime = msg.startTime;
         hourminute endTime = msg.endTime;
         bookStruct booking = {startTime, endTime};
         bool success = facility.bookFacility(day, booking);
+        facility.printReservations(day);
         if (!success) {
             replyMsg.errorCode = 300;
             return;
         }
-
+        
         //assign UID
         uint32_t uid = getUniqueId();
         replyMsg.uid = uid;
         replyMsg.errorCode = 100;
+        bookings[uid] = {{facilityName,day},booking};
     }
 
     int getUniqueId() {
@@ -682,15 +707,18 @@ public:
         std::string facilityName = booking.first.first;
         Day day = booking.first.second;
         bookStruct time = booking.second;
-        Facility facility = facilities.at(facilityName);
+        Facility& facility = facilities.at(facilityName);
         int32_t offset = msg.offset;
-        bool success = facility.updateBooking(day, time, offset);
+        bookStruct newTime{};
+        Day newDay{};
+        bool success = facility.updateBooking(day, time, offset,newTime);
+        facility.printReservations(day);
         if (!success) {
-            replyMsg.errorCode = 400;
+            replyMsg.errorCode = 300;
             return;
         }
         replyMsg.errorCode = 100;
-        bookings[uid] = {{facilityName, day}, time};
+        bookings[uid] = {{facilityName, day}, newTime};
     }
 
     void handleCallback(UnmarshalledRequestMessage& msg, UnmarshalledReplyMessage& replyMsg, 
@@ -738,44 +766,60 @@ public:
         std::string facilityName = booking.first.first;
         Day day = booking.first.second;
         bookStruct time = booking.second;
-        Facility facility = facilities.at(facilityName);
+        Facility& facility = facilities.at(facilityName);
         int32_t offset = msg.offset;
-        bool success = facility.updateLength(day, time, offset);
+        bookStruct newTime{};
+        bool success = facility.updateLength(day, time, offset,newTime);
+        facility.printReservations(day);
         if (!success) {
-            replyMsg.errorCode = 400;
+            replyMsg.errorCode = 300;
             return;
         }
         replyMsg.errorCode = 100;
-        bookings[uid] = {{facilityName, day}, time};
+        bookings[uid] = {{facilityName, day}, newTime};
     }
 
 
     void triggerCallback(int& sockfd, const UnmarshalledRequestMessage& reqMsg, 
-            const UnmarshalledReplyMessage& replyMsg) {
+        const UnmarshalledReplyMessage& replyMsg) {
+            
+        fmt::print("testing 1\n");  
+        std::cout.flush();  
         
         const std::string& facilityName = reqMsg.facilityName;
-        if (callbackMap.contains(facilityName) == false)
-                return;
+        if (callbackMap.contains(facilityName) == false){
+        return;
+        }
 
         sys_time curTime = std::chrono::high_resolution_clock::now(); 
 
+        fmt::print("testing 2\n"); 
+        std::cout.flush();  
+        
         auto& facilityCallbacks = callbackMap[facilityName];
         for (auto it = facilityCallbacks.begin(); it != facilityCallbacks.end() ; ) {
-            auto duration = curTime - it->recv_time;
-            auto minutesDuration = std::chrono::duration_cast<std::chrono::minutes>
-                (duration);
-            int32_t durationInt = minutesDuration.count();
-            if (it->monitorInterval >= durationInt) {
+        auto duration = curTime - it->recv_time;
+        auto minutesDuration = std::chrono::duration_cast<std::chrono::minutes>
+            (duration);
+        int32_t durationInt = minutesDuration.count();
 
-                UnmarshalledRequestMessage localIngress;
-                UnmarshalledReplyMessage localEgress;
-                localIngress.facilityName = facilityName;
-                localIngress.op = 101;
+        fmt::print("testing 3\n");  
+        std::cout.flush();  
+        
+        if (it->monitorInterval >= durationInt) {
 
-                const auto day_list = std::list<Day>{Day::Monday, Day::Tuesday, Day::Wednesday, 
-                    Day::Thursday, Day::Friday, Day::Saturday, Day::Sunday};
+        fmt::print("testing 4\n");  
+        std::cout.flush();  
 
-                #ifdef __cpp_lib_containers_ranges
+            UnmarshalledRequestMessage localIngress;
+            UnmarshalledReplyMessage localEgress;
+            localIngress.facilityName = facilityName;
+            localIngress.op = 101;
+
+            const auto day_list = std::list<Day>{Day::Monday, Day::Tuesday, Day::Wednesday, 
+            Day::Thursday, Day::Friday, Day::Saturday, Day::Sunday};
+
+            #ifdef __cpp_lib_containers_ranges
                     localIngress.days.append_range(day_list);
                 #else
                     localIngress.days.insert(localIngress.days.end(), 
@@ -787,11 +831,22 @@ public:
                 int totalMsgSize = 0; 
                 MarshalledMessage* egressMsg = marshal(&localEgress, &totalMsgSize);
                 memcpy (buffer, egressMsg, totalMsgSize);
+                uint16_t address = static_cast<uint16_t>(it->client_addr.sin_port);
+                fmt::print("Sending to port:{}\n",address);
+                std::cout.flush();
+                if(connect(sockfd, (struct sockaddr *)&it->client_addr, sizeof(it->client_addr))){
+                    perror("Connect failed\n");
+                    return;
+                }
+
                 sendto(sockfd, buffer, totalMsgSize, 0, 
                         ( struct sockaddr* ) &it->client_addr,
                         (socklen_t) sizeof(it->client_addr));
 
                 it++;
+
+                fmt::print("testing 5\n");  
+                std::cout.flush();
                 free(egressMsg);
             }
             else {

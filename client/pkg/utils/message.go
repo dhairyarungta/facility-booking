@@ -5,8 +5,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-
-	"github.com/davecgh/go-spew/spew"
 )
 
 type Day byte
@@ -276,15 +274,12 @@ func Marshal(req *UnMarshalledRequestMessage) ([]byte, error) {
 		}
 	}
 	fmt.Println(payloadLen)
-	spew.Dump(networkBuf.Bytes())
 	return networkBuf.Bytes(), nil
 }
 
 func UnMarshal(incomingPacket []byte) (*UnMarshalledReplyMessage, error) {
 	buf := bytes.NewBuffer(incomingPacket)
-
 	var networkMessage marshalledMessage
-
 	for _, data := range []interface{}{
 		&networkMessage.reqId,
 		&networkMessage.uid,
@@ -296,10 +291,10 @@ func UnMarshal(incomingPacket []byte) (*UnMarshalledReplyMessage, error) {
 		}
 
 	}
+
 	var newReply UnMarshalledReplyMessage
 	newReply.Op = networkMessage.op
 	newReply.Uid = networkMessage.uid
-	fmt.Printf("Payload Len %v\n", networkMessage.payLoadLen)
 
 	if networkMessage.payLoadLen <= 0 {
 		return &newReply, nil
