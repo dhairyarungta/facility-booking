@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"strconv"
 	"time"
 
@@ -92,30 +91,53 @@ func (client *UdpClient) WatchMessage( message utils.UnMarshalledRequestMessage,
 	if err!=nil{
 		return err
 	}
-	conn, err = tcpListener.Accept()
-	if err!=nil{
-		return err
-	}
-	conn.SetDeadline(time.Now().Add(time.Duration(watchInterval)*time.Minute))
-	buf = make([]byte,1024)
+	defer tcpListener.Close()
+	timer := time.NewTimer(time.Minute * time.Duration(watchInterval))
+	connChannel := make(chan net.Conn)
+	errChannel := make(chan error)
+	defer close(connChannel)
+	defer close(errChannel)
+
+	go func(){
+		for {
+			conn, err = tcpListener.Accept()
+			if err != nil {
+				errChannel <- err
+				return 
+			}
+			connChannel <- conn
+		}
+	}()
 	for {
-		fmt.Println("Reading incoming messages...")
-		n, err := conn.Read(buf)
-		if errors.Is(err,io.EOF){
-			return errors.New("server closed connection")
-		}
-		if errors.Is(err,os.ErrDeadlineExceeded){
-			fmt.Println("timeout exceeded")
+		select{
+		case <-timer.C:
+			fmt.Println("timer has completed")
 			return nil
-		}
-		if err !=nil{
+		case newConn := <-connChannel:
+			go func(conn net.Conn) {
+				defer conn.Close()
+				connBuf := make([]byte, 1024)
+				for {
+					fmt.Println("reading incoming messages...")
+					n, err := conn.Read(connBuf)
+					if errors.Is(err, io.EOF) {
+						break
+					}
+					if err != nil {
+						fmt.Printf("Error reading from connection: %v\n", err)
+						break
+					}
+					newReply, err := utils.UnMarshal(connBuf[:n])
+					if err != nil {
+						fmt.Printf("Error unmarshalling message: %v\n", err)
+						break
+					}
+					utils.FormatReplyMessage(newReply)
+				}
+			}(newConn)
+		case err := <- errChannel:
 			return err
 		}
-		newReply,err := utils.UnMarshal(buf[:n])
-		if err!=nil{
-			return err
-		}
-		utils.FormatReplyMessage(newReply)
 	}
 }
 

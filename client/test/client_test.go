@@ -43,7 +43,7 @@ func TestCode101Query(t *testing.T){
         Op: 101,
         FacilityName: "Fitness Center",
         Days: []utils.Day{
-            '0','1','2',
+            '0','1','2','5',
         },
     }
 
@@ -67,7 +67,7 @@ func TestCode102Create(t *testing.T){
         Op: 102,
         FacilityName: "Fitness Center",
         Days: []utils.Day{
-            '1',
+            '5',
         },
         StartTime: utils.HourMinutes{
             '0','9','0','0',
@@ -93,7 +93,7 @@ func TestCode103UpdateStartTime(t *testing.T){
     newReq := utils.UnMarshalledRequestMessage{
         ReqId: 1,
         Op: 103,
-        Uid: 101300,
+        Uid: 101304,
         Offset: 30,
     }
 
@@ -107,55 +107,64 @@ func TestCode103UpdateStartTime(t *testing.T){
     assert.Equal(resp.Op,uint32(103))
 }
 
-func TestCode104Monitor(t *testing.T){
+func TestCode104Monitor(t *testing.T) {
     // assert := assert.New(t)
     var wg sync.WaitGroup
     watchClient := udp.NewUdpClient(IP)
-    newReq := utils.UnMarshalledRequestMessage{
+    
+    monitorReq := utils.UnMarshalledRequestMessage{
         ReqId: 2,
         Op: 104,
         FacilityName: "Fitness Center",
-        Offset: 5,
+        Offset: 10, 
     }
 
+    
     wg.Add(1)
-    go func(){
+    go func() {
         defer wg.Done()
-        err := watchClient.WatchMessage(newReq,5,5,true,5)
-        if err!=nil{
-            fmt.Println(err)
+        err := watchClient.WatchMessage(monitorReq, 10, 5, true, 5)
+        if err != nil {
+            fmt.Println("Monitor error:", err)
             return
         }
-   }()
+    }()
 
-   time.Sleep(5*time.Second)
-   client := udp.NewUdpClient(IP)
-   bookReq := utils.UnMarshalledRequestMessage{
-        ReqId: 1,
-        Op: 102,
-        FacilityName: "Fitness Center",
-        Days: []utils.Day{
-            '0',
-        },
-        StartTime: utils.HourMinutes{
-            '0','9','0','0',
-        },
-        EndTime:utils.HourMinutes{
-            '1','1','0','0',
-        },
+    time.Sleep(2 * time.Second)
+    
+    bookingCount := 3
+    for i := 0; i < bookingCount; i++ {
+        dayChar := '0' + i
+        client := udp.NewUdpClient(IP)
+        bookReq := utils.UnMarshalledRequestMessage{
+            ReqId: uint32(100 + i),
+            Op: 102,
+            FacilityName: "Fitness Center",
+            Days: []utils.Day{
+                utils.Day(dayChar),
+            },
+            StartTime: utils.HourMinutes{
+                '0', '1', '0', '0',
+            },
+            EndTime: utils.HourMinutes{
+                '0', '2', '0', '0',
+            },
+        }
+        
+        resp, err := client.SendMessage(bookReq, 5, true, 5)
+        if err != nil {
+            fmt.Println("Booking error:", err)
+            t.Fail()
+            return
+        }
+        
+        utils.FormatReplyMessage(resp)
+        time.Sleep(1 * time.Second)
     }
-
-    resp,err := client.SendMessage(bookReq,5,true,5)
-    if err!=nil{
-        fmt.Println(err)
-        os.Exit(1)
-    }
-
-    utils.FormatReplyMessage(resp)
+    
+    time.Sleep(3 * time.Second)
     wg.Wait()
-    
-    
-} 
+}
 
 func TestCode105Capacity(t *testing.T){
     assert := assert.New(t)
@@ -211,7 +220,7 @@ func TestCode106UpdateWidth(t *testing.T){
     newReq := utils.UnMarshalledRequestMessage{
         ReqId: 1,
         Op: 106,
-        Uid: 101300,
+        Uid: 101304,
         Offset: 30,
     }
 

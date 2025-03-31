@@ -836,16 +836,14 @@ public:
                 std::cout.flush();
                 //temp addition of connect
                 if(connect(sockfd, (struct sockaddr *)&it->client_addr, sizeof(it->client_addr))){
-                    perror("Connect failed\n");
-                    return;
+                    perror("Connect failed Client Possibly Closed\n");
+                    // return;
+                } else {
+                    sendto(sockfd, buffer, totalMsgSize, 0, 
+                    ( struct sockaddr* ) &it->client_addr,
+                    (socklen_t) sizeof(it->client_addr));
                 }
-
-                sendto(sockfd, buffer, totalMsgSize, 0, 
-                        ( struct sockaddr* ) &it->client_addr,
-                        (socklen_t) sizeof(it->client_addr));
-
-                it++;
-
+                    it++;
                 fmt::print("testing 5\n");  
                 std::cout.flush();
                 close(sockfd);
@@ -892,13 +890,13 @@ public:
         server_tcp_addr.sin_addr.s_addr = INADDR_ANY;
         server_tcp_addr.sin_port = htons(TCP_PORT);
         //Bind TCP socket to port
-        if (bind(tcpsock, (const struct sockaddr *)&server_tcp_addr, sizeof(server_tcp_addr)) < 0) {
-            perror("Bind TCP failed");
-            close(tcpsock);
-            return EXIT_FAILURE;
-        }
+        // if (bind(tcpsock, (const struct sockaddr *)&server_tcp_addr, sizeof(server_tcp_addr)) < 0) {
+        //     perror("Bind TCP failed");
+        //     close(tcpsock);
+        //     return EXIT_FAILURE;
+        // }
         std::cout << "UDP Server listening on port " << PORT << "...\n";
-        std::cout << "TCP Server listening on port  " << TCP_PORT << "...\n";
+        // std::cout << "TCP Server listening on port  " << TCP_PORT << "...\n";
 
         const char* ack = "ACK";
         bool duplicate = false;
