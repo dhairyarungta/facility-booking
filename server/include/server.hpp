@@ -728,7 +728,8 @@ public:
             replyMsg.errorCode = 200;
             return;
         }
-        client_addr.sin_port = msg.port; //add TCP port instead of UDP
+        client_addr.sin_port = htons(msg.port); //add TCP port instead of UDP
+        client_addr.sin_family = AF_INET;
         callbackMap[msg.facilityName].insert( CallbackInfo(client_addr, recv_time, msg.offset) );
         // insert callback in the map, for the particular facility name
         replyMsg.errorCode = 100;
@@ -826,7 +827,6 @@ public:
                         day_list.cbegin(), day_list.cend());
                     #endif
                 
-
                 handleQuery(localIngress, localEgress);
                 int totalMsgSize = 0; 
                 MarshalledMessage* egressMsg = marshal(&localEgress, &totalMsgSize);
@@ -834,6 +834,7 @@ public:
                 uint16_t address = static_cast<uint16_t>(it->client_addr.sin_port);
                 fmt::print("Sending to port:{}\n",address);
                 std::cout.flush();
+                //temp addition of connect
                 if(connect(sockfd, (struct sockaddr *)&it->client_addr, sizeof(it->client_addr))){
                     perror("Connect failed\n");
                     return;
@@ -847,6 +848,8 @@ public:
 
                 fmt::print("testing 5\n");  
                 std::cout.flush();
+                close(sockfd);
+                sockfd = socket(AF_INET, SOCK_STREAM, 0); 
                 free(egressMsg);
             }
             else {

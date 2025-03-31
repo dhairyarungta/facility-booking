@@ -115,7 +115,6 @@ func (client *UdpClient) WatchMessage( message utils.UnMarshalledRequestMessage,
 		if err!=nil{
 			return err
 		}
-		fmt.Println(buf)
 		utils.FormatReplyMessage(newReply)
 	}
 }

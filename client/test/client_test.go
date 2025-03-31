@@ -67,7 +67,7 @@ func TestCode102Create(t *testing.T){
         Op: 102,
         FacilityName: "Fitness Center",
         Days: []utils.Day{
-            '0',
+            '1',
         },
         StartTime: utils.HourMinutes{
             '0','9','0','0',
