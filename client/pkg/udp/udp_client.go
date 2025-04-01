@@ -60,7 +60,6 @@ func (client *UdpClient) WatchMessage( message utils.UnMarshalledRequestMessage,
 				return err
 			}
 			if(string(ackBuf) == "ACK"){
-				fmt.Printf("Recieved %c\n",ackBuf)
 				break
 			}
 			count ++

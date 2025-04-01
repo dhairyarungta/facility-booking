@@ -273,7 +273,6 @@ func Marshal(req *UnMarshalledRequestMessage) ([]byte, error) {
 
 		}
 	}
-	fmt.Println(payloadLen)
 	return networkBuf.Bytes(), nil
 }
 
@@ -362,7 +361,6 @@ func UnMarshal(incomingPacket []byte) (*UnMarshalledReplyMessage, error) {
 		if err := binary.Read(buf, binary.BigEndian, &numFacility); err != nil {
 			return nil, err
 		}
-		fmt.Printf("Number of Facilities %v",numFacility)
 		for _ = range numFacility {
 			var facilityNameLen uint32
 			if err := binary.Read(buf, binary.BigEndian, &facilityNameLen); err != nil {
