@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"strconv"
 	"time"
 
@@ -29,12 +28,15 @@ func (client *UdpClient) WatchMessage( message utils.UnMarshalledRequestMessage,
 	if err!=nil{
 		return err
 	}
+	defer conn.Close()
 	localIp := conn.LocalAddr()
 	localAddr, port, err := net.SplitHostPort(localIp.String())
 	if err!=nil{
 		return err
 	}
-	sockPort,err := strconv.Atoi(port)
+	udpPort,err := strconv.Atoi(port)
+	sockPort := udpPort + 1
+	fmt.Printf("sock-port %v\n",sockPort)
 	message.Port = uint16(sockPort)
 	if err!=nil{
 		return err
@@ -58,7 +60,6 @@ func (client *UdpClient) WatchMessage( message utils.UnMarshalledRequestMessage,
 				return err
 			}
 			if(string(ackBuf) == "ACK"){
-				fmt.Printf("Recieved Ack %v",ackBuf)
 				break
 			}
 			count ++
@@ -68,38 +69,83 @@ func (client *UdpClient) WatchMessage( message utils.UnMarshalledRequestMessage,
 		}
 		
 	}
-	conn.Close()
+
+	buf := make([]byte,1024)
+	n,err := conn.Read(buf)
+	if err!=nil{
+		return err
+	}
+	reply,err := utils.UnMarshal(buf[:n])
+	if err!=nil{
+		return err
+	}
+	utils.FormatReplyMessage(reply)
+
 	tcpAddr := net.TCPAddr{
 		IP: net.ParseIP(localAddr),
 		Port: sockPort,
 	}
+	fmt.Printf("tcp port at %v\n",sockPort)
 	tcpListener, err := net.ListenTCP("tcp4",&tcpAddr)
 	if err!=nil{
 		return err
 	}
-	conn, err = tcpListener.Accept()
-	if err!=nil{
-		return err
-	}
-	conn.SetDeadline(time.Now().Add(time.Duration(watchInterval)*time.Minute))
-	buf := make([]byte,1024)
+	defer tcpListener.Close()
+	timer := time.NewTimer(time.Minute * time.Duration(watchInterval))
+	connChannel := make(chan net.Conn)
+	errChannel := make(chan error)
+	done := make(chan struct{},1)
+	defer close(connChannel)
+	defer close(errChannel)
+	go func(){
+		for {
+			select {
+			case <- done:
+				return
+			default:
+				conn, err = tcpListener.Accept()
+				if err != nil {
+					if !errors.Is(err,net.ErrClosed){
+						errChannel <- err
+					}
+					return 
+				}
+				connChannel <- conn
+			}
+		}
+	}()
 	for {
-		n, err := conn.Read(buf)
-		if errors.Is(err,io.EOF){
-			return errors.New("server closed connection")
-		}
-		if errors.Is(err,os.ErrDeadlineExceeded){
-			fmt.Println("timeout exceeded")
+		select{
+		case <-timer.C:
+			fmt.Println("timer has completed")
+			done<- struct{}{}
+			tcpListener.Close()
 			return nil
-		}
-		if err !=nil{
+		case newConn := <-connChannel:
+			go func(conn net.Conn) {
+				defer conn.Close()
+				connBuf := make([]byte, 1024)
+				for {
+					fmt.Println("reading incoming messages...")
+					n, err := conn.Read(connBuf)
+					if errors.Is(err, io.EOF) {
+						break
+					}
+					if err != nil {
+						fmt.Printf("Error reading from connection: %v\n", err)
+						break
+					}
+					newReply, err := utils.UnMarshal(connBuf[:n])
+					if err != nil {
+						fmt.Printf("Error unmarshalling message: %v\n", err)
+						break
+					}
+					utils.FormatReplyMessage(newReply)
+				}
+			}(newConn)
+		case err := <- errChannel:
 			return err
 		}
-		newReply,err := utils.UnMarshal(buf[:n])
-		if err!=nil{
-			return err
-		}
-		utils.FormatReplyMessage(newReply)
 	}
 }
 
@@ -130,7 +176,7 @@ func (client *UdpClient) SendMessage(message utils.UnMarshalledRequestMessage,ti
 			}
 
 			if(string(ackBuf) == "ACK"){
-				fmt.Printf("Recieved ACK %v",ackBuf)
+				fmt.Println("Recieved ACK")
 				break
 			}
 			count ++
@@ -146,9 +192,6 @@ func (client *UdpClient) SendMessage(message utils.UnMarshalledRequestMessage,ti
 	if err !=nil && !errors.Is(err,io.EOF){
 		return nil, err
 	}
-
-	fmt.Println(n)
-	fmt.Println(buf)
 	newReply,err := utils.UnMarshal(buf[:n])
 	if err!=nil{
 		return nil,err     

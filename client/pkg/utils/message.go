@@ -5,8 +5,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-
-	"github.com/davecgh/go-spew/spew"
 )
 
 type Day byte
@@ -82,7 +80,7 @@ func FormatReplyMessage(reply *UnMarshalledReplyMessage){
 	switch reply.Op {
 	case 101:
 		for _,availability := range reply.Availabilities{
-			fmt.Printf("Availabilities for %v\n",CharToDay[byte(availability.Day)])
+			fmt.Printf("\nAvailabilities for %v\n",CharToDay[byte(availability.Day)])
 			fmt.Printf("---------------------------\n")
 			for i,timeSlot := range availability.TimeSlots{
 				startTime := timeSlot.StartTime.ToString()
@@ -101,7 +99,7 @@ func FormatReplyMessage(reply *UnMarshalledReplyMessage){
 	case 106:
 		fmt.Printf("Update successful %v OK\n",reply.Op)
 	case 107:
-		fmt.Printf("Available facilities for booking\n")
+		fmt.Printf("\nAvailable facilities for booking\n")
 		fmt.Printf("--------------------------------\n")
 		for i,facilityName := range reply.FacilityNames{
 			fmt.Printf("%v - %v\n",i+1,facilityName)
@@ -275,16 +273,12 @@ func Marshal(req *UnMarshalledRequestMessage) ([]byte, error) {
 
 		}
 	}
-	fmt.Println(payloadLen)
-	spew.Dump(networkBuf.Bytes())
 	return networkBuf.Bytes(), nil
 }
 
 func UnMarshal(incomingPacket []byte) (*UnMarshalledReplyMessage, error) {
 	buf := bytes.NewBuffer(incomingPacket)
-
 	var networkMessage marshalledMessage
-
 	for _, data := range []interface{}{
 		&networkMessage.reqId,
 		&networkMessage.uid,
@@ -296,10 +290,10 @@ func UnMarshal(incomingPacket []byte) (*UnMarshalledReplyMessage, error) {
 		}
 
 	}
+
 	var newReply UnMarshalledReplyMessage
 	newReply.Op = networkMessage.op
 	newReply.Uid = networkMessage.uid
-	fmt.Printf("Payload Len %v\n", networkMessage.payLoadLen)
 
 	if networkMessage.payLoadLen <= 0 {
 		return &newReply, nil
@@ -367,7 +361,6 @@ func UnMarshal(incomingPacket []byte) (*UnMarshalledReplyMessage, error) {
 		if err := binary.Read(buf, binary.BigEndian, &numFacility); err != nil {
 			return nil, err
 		}
-		fmt.Printf("Number of Facilities %v",numFacility)
 		for _ = range numFacility {
 			var facilityNameLen uint32
 			if err := binary.Read(buf, binary.BigEndian, &facilityNameLen); err != nil {

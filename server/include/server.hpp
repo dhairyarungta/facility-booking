@@ -28,6 +28,15 @@ typedef std::pair<int, int> hourminute; // Time : {Hour, Minute}
 typedef std::pair<hourminute, hourminute> bookStruct; 
 //bookings are represented via {{startHour, StartMin}, {endHour, endMin}}
 
+int hourToTimestamp(hourminute time) {
+    return 60*time.first + time.second;
+}
+
+hourminute timestampToHour(int time) {
+    int hour = time/60;
+    int minute = time%60;
+    return {hour, minute};
+}
 using sys_time = std::chrono::time_point<std::chrono::high_resolution_clock> ;
 
 enum class InvocationSemantics {
@@ -72,6 +81,17 @@ auto compareBookStruct = [](const bookStruct& a, const bookStruct& b) {
     return (a.second <= b.first);  
 };
 
+std::unordered_map<Day, std::string> dayToStr = {
+    {Day::Monday, "Monday"},
+    {Day::Tuesday, "Tuesday"},
+    {Day::Wednesday, "Wednesday"},
+    {Day::Thursday, "Thursday"},
+    {Day::Friday, "Friday"},
+    {Day::Saturday, "Saturday"},
+    {Day::Sunday, "Sunday"},
+};
+
+
 class Facility {
     std::string name;
     int capacity;
@@ -81,15 +101,7 @@ class Facility {
     //Day and the reservations for that day (for one facility)
     //a reservation is of form (1200)
 
-    int hourToTimestamp(hourminute time) {
-        return 60*time.first + time.second;
-    }
 
-    hourminute timestampToHour(int time) {
-        int hour = time/60;
-        int minute = time%60;
-        return {hour, minute};
-    }
     Day decDay(Day day) {
         switch (day) {
             case Day::Tuesday : {
@@ -145,7 +157,7 @@ class Facility {
             return true;
         }
 
-        auto it = std::upper_bound(reservations[day].begin(), reservations[day].end(), booking);
+        auto it = std::upper_bound(reservations[day].begin(), reservations[day].end(), booking, compareBookStruct);
         if (it == reservations[day].begin()) return true;
         it--;
         return it->second <= booking.first;
@@ -163,7 +175,7 @@ public:
 
         std::vector<std::pair<Day, std::vector<hourminute>>> availabilities; //avails are in timestamps in minutes {startMinute, endMinute}
         for (auto day : days) {
-            if (!reservations[day].size()) {
+            if (reservations[day].size() <= 0) {
                 availabilities.push_back({day, {{0, 1439}}});
             }
             else {
@@ -191,17 +203,22 @@ public:
         return availabilities;
     }
     bool bookFacility(Day day, bookStruct bookTime) {
-        if (isWellOrdered(bookTime, day)) {
+
+        if (isWellOrdered(bookTime, day) && bookTime.second > bookTime.first) {
             reservations[day].insert(bookTime);
             return true;
         }
         return false;
-        
     }
-    bool updateBooking(Day day, bookStruct booking, int32_t offset) {
+
+    bool updateBooking(Day day, bookStruct booking, int32_t offset,bookStruct &newBooking) {
         int startTime = hourToTimestamp(booking.first)+offset;
         int endTime = hourToTimestamp(booking.second)+offset;
+        if (startTime >= 1439 || endTime > 1439){
+            return false;
+        }
         bookStruct updatedBooking = {timestampToHour(startTime), timestampToHour(endTime)};
+        newBooking = updatedBooking;
         //can add additional logic for when offset forces day to spill over to next or previous
         reservations[day].erase(booking);
         if (isWellOrdered(updatedBooking, day)) {
@@ -214,10 +231,13 @@ public:
     int queryCapacity() {
         return capacity; //idempotent service
     }
-    bool updateLength(Day day, bookStruct booking, int32_t offset) {
+    bool updateLength(Day day, bookStruct booking, int32_t offset, bookStruct &newBooking) {
         int endTime = hourToTimestamp(booking.second) + offset;
+        if(endTime > 1439){
+            return false;
+        }
         bookStruct updatedBooking = {booking.first, timestampToHour(endTime)};
-
+        newBooking = updatedBooking;
         reservations[day].erase(booking);
         if (isWellOrdered(updatedBooking, day)) {
             reservations[day].insert(updatedBooking);
@@ -636,7 +656,7 @@ class Server {
 
             msg.offset = ntohl(*reinterpret_cast< int32_t* >(payload + payloadIdx));
             payloadIdx += sizeof(int32_t);
-            msg.port = *reinterpret_cast<uint32_t*>(payload+payloadIdx);
+            msg.port = ntohs(*reinterpret_cast<uint16_t*>(payload+payloadIdx));
     }
 
     void update_request_handle (UnmarshalledRequestMessage& msg, char* payload, 
@@ -676,7 +696,7 @@ class Server {
 
         *ptrTotalMsgSize = sizeof(MarshalledMessage) + size;
         if(msg->errorCode != 100){
-            egressMsg->op = msg->errorCode;
+            egressMsg->op = htonl(msg->errorCode);
             return egressMsg;
         }
         uint32_t op = htonl(msg->op);
@@ -711,7 +731,7 @@ class Server {
         
         int payloadIndex = 4*sizeof(uint32_t);
         
-        switch (localMsg.uid) {
+        switch (localMsg.op) {
             case 101:
                 query_request_handle(localMsg, msg->payload, payloadLen);
                 break;
@@ -753,7 +773,7 @@ public:
             replyMsg.errorCode = 200;
             return;
         }
-        auto facility = facilities.at(facilityName);
+        Facility &facility = facilities.at(facilityName);
         replyMsg.availabilities = std::move(facility.queryAvail(days));
         replyMsg.errorCode = 100;
     }
@@ -766,7 +786,7 @@ public:
             replyMsg.errorCode = 200;
             return;
         }
-        Facility facility = facilities.at(facilityName);
+        Facility& facility = facilities.at(facilityName);
         hourminute startTime = msg.startTime;
         hourminute endTime = msg.endTime;
         bookStruct booking = {startTime, endTime};
@@ -775,11 +795,12 @@ public:
             replyMsg.errorCode = 300;
             return;
         }
-
+        
         //assign UID
         uint32_t uid = getUniqueId();
         replyMsg.uid = uid;
         replyMsg.errorCode = 100;
+        bookings[uid] = {{facilityName,day},booking};
     }
 
     int getUniqueId() {
@@ -798,15 +819,17 @@ public:
         std::string facilityName = booking.first.first;
         Day day = booking.first.second;
         bookStruct time = booking.second;
-        Facility facility = facilities.at(facilityName);
+        Facility& facility = facilities.at(facilityName);
         int32_t offset = msg.offset;
-        bool success = facility.updateBooking(day, time, offset);
+        bookStruct newTime{};
+        Day newDay{};
+        bool success = facility.updateBooking(day, time, offset,newTime);
         if (!success) {
-            replyMsg.errorCode = 400;
+            replyMsg.errorCode = 300;
             return;
         }
         replyMsg.errorCode = 100;
-        bookings[uid] = {{facilityName, day}, time};
+        bookings[uid] = {{facilityName, day}, newTime};
     }
 
     void handleCallback(UnmarshalledRequestMessage& msg, UnmarshalledReplyMessage& replyMsg, 
@@ -816,7 +839,8 @@ public:
             replyMsg.errorCode = 200;
             return;
         }
-        client_addr.sin_port = msg.port; //add TCP port instead of UDP
+        client_addr.sin_port = htons(msg.port); //add TCP port instead of UDP
+        client_addr.sin_family = AF_INET;
         callbackMap[msg.facilityName].insert( CallbackInfo(client_addr, recv_time, msg.offset) );
         // insert callback in the map, for the particular facility name
         replyMsg.errorCode = 100;
@@ -854,60 +878,63 @@ public:
         std::string facilityName = booking.first.first;
         Day day = booking.first.second;
         bookStruct time = booking.second;
-        Facility facility = facilities.at(facilityName);
+        Facility& facility = facilities.at(facilityName);
         int32_t offset = msg.offset;
-        bool success = facility.updateLength(day, time, offset);
+        bookStruct newTime{};
+        bool success = facility.updateLength(day, time, offset,newTime);
         if (!success) {
-            replyMsg.errorCode = 400;
+            replyMsg.errorCode = 300;
             return;
         }
         replyMsg.errorCode = 100;
-        bookings[uid] = {{facilityName, day}, time};
+        bookings[uid] = {{facilityName, day}, newTime};
     }
 
 
     void triggerCallback(int& sockfd, const UnmarshalledRequestMessage& reqMsg, 
-            const UnmarshalledReplyMessage& replyMsg) {
-        
+        const UnmarshalledReplyMessage& replyMsg) {
         const std::string& facilityName = reqMsg.facilityName;
-        if (callbackMap.contains(facilityName) == false)
-                return;
-
+        if (callbackMap.contains(facilityName) == false){
+        return;
+        }
         sys_time curTime = std::chrono::high_resolution_clock::now(); 
-
         auto& facilityCallbacks = callbackMap[facilityName];
         for (auto it = facilityCallbacks.begin(); it != facilityCallbacks.end() ; ) {
-            auto duration = curTime - it->recv_time;
-            auto minutesDuration = std::chrono::duration_cast<std::chrono::minutes>
-                (duration);
-            int32_t durationInt = minutesDuration.count();
-            if (it->monitorInterval >= durationInt) {
+        auto duration = curTime - it->recv_time;
+        auto minutesDuration = std::chrono::duration_cast<std::chrono::minutes>
+            (duration);
+        int32_t durationInt = minutesDuration.count();
+        if (it->monitorInterval >= durationInt) {
+            UnmarshalledRequestMessage localIngress;
+            UnmarshalledReplyMessage localEgress;
+            localIngress.facilityName = facilityName;
+            localIngress.op = 101;
+            const auto day_list = std::list<Day>{Day::Monday, Day::Tuesday, Day::Wednesday, 
+            Day::Thursday, Day::Friday, Day::Saturday, Day::Sunday};
 
-                UnmarshalledRequestMessage localIngress;
-                UnmarshalledReplyMessage localEgress;
-                localIngress.facilityName = facilityName;
-                localIngress.op = 101;
-
-                const auto day_list = std::list<Day>{Day::Monday, Day::Tuesday, Day::Wednesday, 
-                    Day::Thursday, Day::Friday, Day::Saturday, Day::Sunday};
-
-                #ifdef __cpp_lib_containers_ranges
+            #ifdef __cpp_lib_containers_ranges
                     localIngress.days.append_range(day_list);
                 #else
                     localIngress.days.insert(localIngress.days.end(), 
                         day_list.cbegin(), day_list.cend());
                     #endif
                 
-
                 handleQuery(localIngress, localEgress);
                 int totalMsgSize = 0; 
                 MarshalledMessage* egressMsg = marshal(&localEgress, &totalMsgSize);
                 memcpy (buffer, egressMsg, totalMsgSize);
-                sendto(sockfd, buffer, totalMsgSize, 0, 
-                        ( struct sockaddr* ) &it->client_addr,
-                        (socklen_t) sizeof(it->client_addr));
-
-                it++;
+                uint16_t address = static_cast<uint16_t>(it->client_addr.sin_port);
+                if(connect(sockfd, (struct sockaddr *)&it->client_addr, sizeof(it->client_addr))){
+                    perror("Connect failed Client Possibly Closed\n");
+                    // return;
+                } else {
+                    sendto(sockfd, buffer, totalMsgSize, 0, 
+                    ( struct sockaddr* ) &it->client_addr,
+                    (socklen_t) sizeof(it->client_addr));
+                }
+                    it++;
+                close(sockfd);
+                sockfd = socket(AF_INET, SOCK_STREAM, 0); 
                 free(egressMsg);
             }
             else {
@@ -950,13 +977,13 @@ public:
         server_tcp_addr.sin_addr.s_addr = INADDR_ANY;
         server_tcp_addr.sin_port = htons(TCP_PORT);
         //Bind TCP socket to port
-        if (bind(tcpsock, (const struct sockaddr *)&server_tcp_addr, sizeof(server_tcp_addr)) < 0) {
-            perror("Bind TCP failed");
-            close(tcpsock);
-            return EXIT_FAILURE;
-        }
+        // if (bind(tcpsock, (const struct sockaddr *)&server_tcp_addr, sizeof(server_tcp_addr)) < 0) {
+        //     perror("Bind TCP failed");
+        //     close(tcpsock);
+        //     return EXIT_FAILURE;
+        // }
         std::cout << "UDP Server listening on port " << PORT << "...\n";
-        std::cout << "TCP Server listening on port  " << TCP_PORT << "...\n";
+        // std::cout << "TCP Server listening on port  " << TCP_PORT << "...\n";
 
         const char* ack = "ACK";
         bool duplicate = false;
