@@ -878,7 +878,7 @@ public:
             UnmarshalledRequestMessage localMsg = 
                 unmarshal( reinterpret_cast< MarshalledMessage* >(buffer) );
 
-            //plan maybe add a handler class here? handler class
+            std::cout << "Request ID " << localMsg.reqID << std::endl;
             UnmarshalledReplyMessage localEgress;
             if (replyCache.find(localMsg.reqID) == replyCache.end() 
                 || semantics == InvocationSemantics::AT_LEAST_ONCE) {

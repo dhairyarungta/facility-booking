@@ -9,6 +9,7 @@ import (
 
 	"github.com/dhairyarungta/facility-booking/client/pkg/udp"
 	"github.com/dhairyarungta/facility-booking/client/pkg/utils"
+	"github.com/google/uuid"
 )
 
 const (
@@ -57,7 +58,12 @@ func printHelp() {
 func main() {
 	client := udp.NewUdpClient(DefaultHostAddr)
 	scanner := bufio.NewScanner(os.Stdin)
-	reqId := uint32(1)
+	uuidRand , err := uuid.NewRandom()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error generating UUID: %v\n", err)
+		os.Exit(1)
+	}
+	reqId := uint32(uuidRand.ID())
 
 	fmt.Println("Facility Booking Client")
 	fmt.Println("Type 'help' for available commands")
@@ -224,7 +230,7 @@ func main() {
 			}
 
 			utils.FormatReplyMessage(reply)
-			// reqId++
+			reqId++
 
 		case "extend":
 			if len(args) < 3 {
@@ -261,7 +267,7 @@ func main() {
 
 			utils.FormatReplyMessage(reply)
 			
-			// reqId++
+			reqId++
 
 		case "watch":
 			if len(args) < 2 {
