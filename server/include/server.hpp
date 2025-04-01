@@ -28,6 +28,15 @@ typedef std::pair<int, int> hourminute; // Time : {Hour, Minute}
 typedef std::pair<hourminute, hourminute> bookStruct; 
 //bookings are represented via {{startHour, StartMin}, {endHour, endMin}}
 
+int hourToTimestamp(hourminute time) {
+    return 60*time.first + time.second;
+}
+
+hourminute timestampToHour(int time) {
+    int hour = time/60;
+    int minute = time%60;
+    return {hour, minute};
+}
 using sys_time = std::chrono::time_point<std::chrono::high_resolution_clock> ;
 
 enum class InvocationSemantics {
@@ -92,15 +101,7 @@ class Facility {
     //Day and the reservations for that day (for one facility)
     //a reservation is of form (1200)
 
-    int hourToTimestamp(hourminute time) {
-        return 60*time.first + time.second;
-    }
 
-    hourminute timestampToHour(int time) {
-        int hour = time/60;
-        int minute = time%60;
-        return {hour, minute};
-    }
     Day decDay(Day day) {
         switch (day) {
             case Day::Tuesday : {
@@ -443,8 +444,9 @@ struct UnmarshalledReplyMessage {
                 for (auto sub : availabilities) {
                     fmt::print("DAY: {}\n", dayToStr(sub.first));
                     fmt::print("-----------------\n");
-                    for (unsigned i = 0; i < sub.second.size(); i+=2) {
-                        fmt::print("{0}:{1}-{2}:{3}\n", sub.second[i].first, sub.second[i].second, sub.second[i+1].first, sub.second[i+1].second);
+                    for (auto avail : sub.second) {
+                        hourminute t1 = timestampToHour(avail.first), t2 = timestampToHour(avail.second);
+                        fmt::print("{0}:{1}-{2}:{3}\n", t1.first, t1.second, t2.first, t2.second);
                     }
                 }
                 break;
