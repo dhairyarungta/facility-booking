@@ -188,22 +188,7 @@ public:
         }
         return false;
     }
-    
-    void printReservations(Day day) {
-        std::cout << "Reservations for day " << static_cast<int>(day) - static_cast<int>(Day::Monday) << ":" << std::endl;
-        if (reservations[day].empty()) {
-            std::cout << "  No reservations" << std::endl;
-            return;
-        }
-        
-        for (const auto& booking : reservations[day]) {
-            std::cout << "  " << booking.first.first << ":" 
-                     << (booking.first.second < 10 ? "0" : "") << booking.first.second
-                     << " - " << booking.second.first << ":" 
-                     << (booking.second.second < 10 ? "0" : "") << booking.second.second 
-                     << std::endl;
-        }
-    }
+
     bool updateBooking(Day day, bookStruct booking, int32_t offset,bookStruct &newBooking) {
         int startTime = hourToTimestamp(booking.first)+offset;
         int endTime = hourToTimestamp(booking.second)+offset;
@@ -678,7 +663,6 @@ public:
         hourminute endTime = msg.endTime;
         bookStruct booking = {startTime, endTime};
         bool success = facility.bookFacility(day, booking);
-        facility.printReservations(day);
         if (!success) {
             replyMsg.errorCode = 300;
             return;
@@ -712,7 +696,6 @@ public:
         bookStruct newTime{};
         Day newDay{};
         bool success = facility.updateBooking(day, time, offset,newTime);
-        facility.printReservations(day);
         if (!success) {
             replyMsg.errorCode = 300;
             return;
@@ -771,7 +754,6 @@ public:
         int32_t offset = msg.offset;
         bookStruct newTime{};
         bool success = facility.updateLength(day, time, offset,newTime);
-        facility.printReservations(day);
         if (!success) {
             replyMsg.errorCode = 300;
             return;
@@ -783,40 +765,22 @@ public:
 
     void triggerCallback(int& sockfd, const UnmarshalledRequestMessage& reqMsg, 
         const UnmarshalledReplyMessage& replyMsg) {
-            
-        fmt::print("testing 1\n");  
-        std::cout.flush();  
-        
         const std::string& facilityName = reqMsg.facilityName;
         if (callbackMap.contains(facilityName) == false){
         return;
         }
-
         sys_time curTime = std::chrono::high_resolution_clock::now(); 
-
-        fmt::print("testing 2\n"); 
-        std::cout.flush();  
-        
         auto& facilityCallbacks = callbackMap[facilityName];
         for (auto it = facilityCallbacks.begin(); it != facilityCallbacks.end() ; ) {
         auto duration = curTime - it->recv_time;
         auto minutesDuration = std::chrono::duration_cast<std::chrono::minutes>
             (duration);
         int32_t durationInt = minutesDuration.count();
-
-        fmt::print("testing 3\n");  
-        std::cout.flush();  
-        
         if (it->monitorInterval >= durationInt) {
-
-        fmt::print("testing 4\n");  
-        std::cout.flush();  
-
             UnmarshalledRequestMessage localIngress;
             UnmarshalledReplyMessage localEgress;
             localIngress.facilityName = facilityName;
             localIngress.op = 101;
-
             const auto day_list = std::list<Day>{Day::Monday, Day::Tuesday, Day::Wednesday, 
             Day::Thursday, Day::Friday, Day::Saturday, Day::Sunday};
 
@@ -832,9 +796,6 @@ public:
                 MarshalledMessage* egressMsg = marshal(&localEgress, &totalMsgSize);
                 memcpy (buffer, egressMsg, totalMsgSize);
                 uint16_t address = static_cast<uint16_t>(it->client_addr.sin_port);
-                fmt::print("Sending to port:{}\n",address);
-                std::cout.flush();
-                //temp addition of connect
                 if(connect(sockfd, (struct sockaddr *)&it->client_addr, sizeof(it->client_addr))){
                     perror("Connect failed Client Possibly Closed\n");
                     // return;
@@ -844,8 +805,6 @@ public:
                     (socklen_t) sizeof(it->client_addr));
                 }
                     it++;
-                fmt::print("testing 5\n");  
-                std::cout.flush();
                 close(sockfd);
                 sockfd = socket(AF_INET, SOCK_STREAM, 0); 
                 free(egressMsg);

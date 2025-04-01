@@ -95,23 +95,29 @@ func (client *UdpClient) WatchMessage( message utils.UnMarshalledRequestMessage,
 	timer := time.NewTimer(time.Minute * time.Duration(watchInterval))
 	connChannel := make(chan net.Conn)
 	errChannel := make(chan error)
+	done := make(chan struct{})
 	defer close(connChannel)
 	defer close(errChannel)
-
 	go func(){
 		for {
-			conn, err = tcpListener.Accept()
-			if err != nil {
-				errChannel <- err
-				return 
+			select {
+			case <- done:
+				return
+			default:
+				conn, err = tcpListener.Accept()
+				if err != nil {
+					errChannel <- err
+					return 
+				}
+				connChannel <- conn
 			}
-			connChannel <- conn
 		}
 	}()
 	for {
 		select{
 		case <-timer.C:
 			fmt.Println("timer has completed")
+			done<- struct{}{}
 			return nil
 		case newConn := <-connChannel:
 			go func(conn net.Conn) {
@@ -168,7 +174,7 @@ func (client *UdpClient) SendMessage(message utils.UnMarshalledRequestMessage,ti
 			}
 
 			if(string(ackBuf) == "ACK"){
-				fmt.Printf("Recieved ACK %c\n",ackBuf)
+				fmt.Println("Recieved ACK")
 				break
 			}
 			count ++

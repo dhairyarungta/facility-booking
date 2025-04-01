@@ -80,7 +80,7 @@ func FormatReplyMessage(reply *UnMarshalledReplyMessage){
 	switch reply.Op {
 	case 101:
 		for _,availability := range reply.Availabilities{
-			fmt.Printf("Availabilities for %v\n",CharToDay[byte(availability.Day)])
+			fmt.Printf("\nAvailabilities for %v\n",CharToDay[byte(availability.Day)])
 			fmt.Printf("---------------------------\n")
 			for i,timeSlot := range availability.TimeSlots{
 				startTime := timeSlot.StartTime.ToString()
@@ -99,7 +99,7 @@ func FormatReplyMessage(reply *UnMarshalledReplyMessage){
 	case 106:
 		fmt.Printf("Update successful %v OK\n",reply.Op)
 	case 107:
-		fmt.Printf("Available facilities for booking\n")
+		fmt.Printf("\nAvailable facilities for booking\n")
 		fmt.Printf("--------------------------------\n")
 		for i,facilityName := range reply.FacilityNames{
 			fmt.Printf("%v - %v\n",i+1,facilityName)

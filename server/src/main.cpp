@@ -43,7 +43,7 @@ int main(){
             n_server.serve();
         }
         else if (option == 2) {
-            semantics = InvocationSemantics::AT_LEAST_ONCE;
+            semantics = InvocationSemantics::AT_MOST_ONCE;
             Server n_server(facilities, semantics);
             n_server.serve();
         }
