@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <chrono>
 #include <fmt/core.h>
+#include <fmt/format.h>
 
 #define PORT 3000
 #define TCP_PORT 3001
@@ -23,7 +24,9 @@
 #define BUFFER_LEN 10000 
 //need to define length of buffer as MarshalledMessage size is indeterminate 
 
-typedef std::pair<int, int> hourminute; // Time : {Hour, Minute}
+typedef std::pair<int, int> hourminute; 
+// Time : {Hour, Minute} for Request
+// Time: {Start Time in minutes}, {End Time in minutes} for Reply
 
 typedef std::pair<hourminute, hourminute> bookStruct; 
 //bookings are represented via {{startHour, StartMin}, {endHour, endMin}}
@@ -44,6 +47,35 @@ enum class Day : char {
     Saturday,
     Sunday
 };
+
+std::string getHourMinuteString (hourminute time) {
+    return fmt::format("{}:{}", time.first, time.second);
+}
+
+std::string getDayString (Day day) {
+    switch (day) {
+        case Day::Monday: 
+            return "Monday";
+        
+        case Day::Tuesday: 
+            return "Tuesday";
+        
+        case Day::Wednesday: 
+            return "Wednesday";
+        
+        case Day::Thursday: 
+            return "Thursday";
+        
+        case Day::Friday: 
+            return "Friday";
+        
+        case Day::Saturday: 
+            return "Saturday";
+        
+        case Day::Sunday : 
+            return "Sunday";
+    }
+}
 
 InvocationSemantics stringToInvocationSemantics (std::string s) {
     if ( s == std::string_view{"AT_LEAST_ONCE"} ) {
@@ -80,6 +112,7 @@ class Facility {
         int minute = time%60;
         return {hour, minute};
     }
+
     Day decDay(Day day) {
         switch (day) {
             case Day::Tuesday : {
@@ -105,6 +138,7 @@ class Facility {
             }
         }
     }
+
     Day incDay(Day day) {
         switch (day) {
             case Day::Monday : {
@@ -130,6 +164,7 @@ class Facility {
             }
         }
     }
+
     bool isWellOrdered(bookStruct booking, Day day) {
         if (!reservations[day].size()) {
             return true;
@@ -335,6 +370,7 @@ struct UnmarshalledRequestMessage {
     hourminute endTime;
     uint16_t port; //TCP port for 104
     int32_t offset; 
+    uint32_t payloadLen;
     //signed, in minutes
     //monitoring interval for a callback (max over a week = 1080 mins)
     //otherwise update time in case update 
@@ -452,7 +488,9 @@ class Server {
         }
     }
 
-    void query_facility_names_handle(const UnmarshalledReplyMessage* msg, char* payload) { 
+    void query_facility_names_handle(const UnmarshalledReplyMessage* msg, 
+        char* payload) { 
+
         int payloadIdx = 0;
         uint32_t numFacilities = htonl(msg->facilityNames.size());
         memcpy(payload + payloadIdx, &numFacilities, sizeof(uint32_t));
@@ -496,8 +534,12 @@ class Server {
 
     void query_capacity_handle (UnmarshalledRequestMessage& msg, char* payload, 
         int payloadLen) {
-            uint32_t facilityNameLen = ntohl(*reinterpret_cast< uint32_t* >(payload));
-            std::string facilityName (reinterpret_cast< char* >(payload+4), facilityNameLen);
+            uint32_t facilityNameLen = 
+                ntohl(*reinterpret_cast< uint32_t* >(payload));
+
+            std::string facilityName (reinterpret_cast< char* >(payload+4), 
+                facilityNameLen);
+
             msg.facilityName = std::move(facilityName);
     }
 
@@ -530,10 +572,13 @@ class Server {
 
     void create_request_handle (UnmarshalledRequestMessage& msg, char* payload, 
         int payloadLen) {
-            uint32_t facilityNameLen = ntohl(*reinterpret_cast< uint32_t* >(payload));
-            std::string facilityName (reinterpret_cast< char* >(payload+4), facilityNameLen);
-            msg.facilityName = std::move(facilityName);
+            uint32_t facilityNameLen = 
+                ntohl(*reinterpret_cast< uint32_t* >(payload));
 
+            std::string facilityName (reinterpret_cast< char* >(payload+4), 
+                facilityNameLen);
+
+            msg.facilityName = std::move(facilityName);
             payload = payload + 4 + facilityNameLen;
             payloadLen = payloadLen - 4 - facilityNameLen; 
 
@@ -552,7 +597,8 @@ class Server {
 
     }
 
-    MarshalledMessage* marshal(const UnmarshalledReplyMessage* msg, int* ptrTotalMsgSize) {
+    MarshalledMessage* marshal(const UnmarshalledReplyMessage* msg, 
+        int* ptrTotalMsgSize) {
 
         int size = getPayloadSize(msg);
         MarshalledMessage* egressMsg = 
@@ -592,6 +638,9 @@ class Server {
         localMsg.uid = ntohl(msg->uid);
         localMsg.op = ntohl(msg->op);
         uint32_t payloadLen = ntohl(msg->payloadLen);
+
+        // Added for printing request messages
+        localMsg.payloadLen = payloadLen;
         
         int payloadIndex = 4*sizeof(uint32_t);
         
@@ -623,6 +672,130 @@ class Server {
                 // exit(1);
         }
         return localMsg;
+    }
+
+    void printUnmarshalledRequestMessage (UnmarshalledRequestMessage& msg) {
+        fmt::print("----------- Request Header -----------\n");
+        fmt::print("Op Code: {}\nRequest ID: {}\nPayload Length: {}\n",
+            msg.op, msg.reqID, msg.payloadLen);
+        fmt::print("----------- Payload -----------\n");
+
+        switch (msg.op) {
+            case 101: {
+                std::string daysString{};
+                for (auto day: msg.days) {
+                    daysString.append(getDayString(day) + " ");
+                }
+                fmt::print("Message Type: Query\n");
+                fmt::print("Facility Name: {}\nNumber of Days to Query: {}\nDays: {}\n",
+                    msg.facilityName, msg.days.size(), daysString);
+                break;
+            }
+
+            case 102: {
+                fmt::print("Message Type: Create Booking\n");
+                fmt::print("Facility Name: {}\nDay: {}\nStart Time: {}, End Time: {}]\n",
+                    msg.facilityName, getDayString(msg.days[0]), 
+                    getHourMinuteString(msg.startTime), 
+                    getHourMinuteString(msg.endTime)); 
+                break;
+            }
+
+            case 103: {
+                fmt::print("Message Type: Update Booking\n");
+                fmt::print("Uid of Booking: {}\nOffset in Minute: {}\n",
+                    msg.uid, msg.offset);
+                break;
+            }
+
+            case 104: {
+                fmt::print("Message Type: Monitor Facility\n");
+                fmt::print("Facility Name: {}\nMonitor Interval (Minutes): {}\n",
+                    msg.facilityName, msg.offset); 
+                fmt::print("TCP Callback Port:{}\n", msg.port);
+                break;
+            }
+
+            case 105: {
+                fmt::print("Message Type: Query Capacity of Facility\n");
+                fmt::print("Facility Name: {}\n", msg.facilityName);
+                break;
+            }
+
+            case 106: {
+                fmt::print("Message Type: Update Booking Length\n");
+                fmt::print("Uid of Booking: {}\n", msg.uid);
+                fmt::print("Change Duration of Booking By (Minutes): {}\n", 
+                    msg.offset);
+                break;
+            }
+
+            case 107: {
+                fmt::print("Message Type: Get All Facility Names\n--No Payload--\n");
+                break;
+            }
+        }
+    }
+
+    void printUnmarshalledReplyMessage (UnmarshalledReplyMessage& msg) {
+        fmt::print("----------- Reply Header -----------\n");
+        fmt::print("Op/Error Code: {}\n", msg.op);
+        fmt::print("----------- Payload -----------\n");
+
+        // Just a check, the msg.op is set to error code if reply message 
+        // formation is unsuccessful
+        if (msg.errorCode != 100)
+            return;
+
+        switch (msg.op) {
+            case 101: {
+                fmt::print("Message Type: Query\n");
+                fmt::print("Number of Days: {}\n", msg.availabilities.size());
+                for (const auto& avail : msg.availabilities) {
+                    fmt::print("Day: {}\nAvilable Time Slots:", getDayString(avail.first));
+                    for (const auto& time : avail.second) {
+                        fmt::print("  {} to {}\n", 
+                            time.first, time.second);
+                    }
+                }
+            }
+
+            case 102: {
+                fmt::print("Message Type: Create Booking\n");
+                fmt::print("Uid: {}\n",msg.uid); 
+                break;
+            }
+
+            case 103: {
+                fmt::print("Message Type: Update Booking\nNo Payload\n");
+                break;
+            }
+
+            case 104: {
+                fmt::print("Message Type: Monitor Facility\n");
+                fmt::print("Payload  sends successful registration or same reply as Query\n");
+                break;
+            }
+
+            case 105: {
+                fmt::print("Message Type: Query Capacity of Facility\n");
+                fmt::print("Capacity : {}\n", msg.capacity);
+                break;
+            }
+
+            case 106: {
+                fmt::print("Message Type: Update Booking Length\nNo Payload\n");
+                break;
+            }
+
+            case 107: {
+                fmt::print("Message Type: Get All Facility Names\nFacility Names:\n");
+                for (const auto& name : msg.facilityNames) {
+                    fmt::print("  {}", name);
+                }
+                break;
+            }
+        }
     }
 
 public:
@@ -772,7 +945,7 @@ public:
                 localIngress.facilityName = facilityName;
                 localIngress.op = 101;
 
-                const auto day_list = std::list<Day>{Day::Monday, Day::Tuesday, Day::Wednesday, 
+                const auto day_list = std::list<Day> {Day::Monday, Day::Tuesday, Day::Wednesday, 
                     Day::Thursday, Day::Friday, Day::Saturday, Day::Sunday};
 
                 #ifdef __cpp_lib_containers_ranges
@@ -863,6 +1036,9 @@ public:
             UnmarshalledRequestMessage localMsg = 
                 unmarshal( reinterpret_cast< MarshalledMessage* >(buffer) );
 
+            //print the request message
+            printUnmarshalledRequestMessage(localMsg);
+
             //plan maybe add a handler class here? handler class
             UnmarshalledReplyMessage localEgress;
             if (replyCache.find(localMsg.reqID) == replyCache.end() 
@@ -902,6 +1078,8 @@ public:
                 duplicate = true;
             }
 
+
+            printUnmarshalledReplyMessage(localEgress);
             // Echo back the received message
             if (semantics == InvocationSemantics::AT_MOST_ONCE) {
                 replyCache[localMsg.reqID] = localEgress; //cache the reply for AT MOST ONCE
