@@ -346,6 +346,58 @@ struct UnmarshalledRequestMessage {
     //signed, in minutes
     //monitoring interval for a callback (max over a week = 1080 mins)
     //otherwise update time in case update 
+
+    void fmt() {
+        fmt::print("REQUEST RECEIVED: \n");
+        fmt::print("=======================================================\n");
+
+        fmt::print("REQUEST ID: {0}\n", reqID);
+        fmt::print("OPCODE: {0}\n", op);
+        switch (op) {
+            case 101:
+                fmt::print("FACILITY NAME: {0}\n", facilityName); 
+                fmt::print("DAYS RECEIVED: ");
+                for (auto day : days) {
+                    fmt::print("{} ",dayToStr[day]);
+                }
+                fmt::print("\n");
+                break;
+
+            case 102:
+                fmt::print("FACILITY NAME: {0}\n", facilityName);
+                fmt::print("DAY RECEIVED: {0}\n", dayToStr[days[0]]);
+                fmt::print("START TIME: {0}:{1}\n", startTime.first, startTime.second);
+                fmt::print("END TIME: {0}:{1}\n", endTime.first, endTime.second);
+                break;
+            
+            case 103:
+                fmt::print("UID: {0}\n", uid);
+                fmt::print("OFFSET: {0}\n", offset);
+                break;
+            
+            case 104:
+                fmt::print("FACILITY NAME: {0}\n", facilityName);
+                fmt::print("MONITOR INTERVAL: {0}\n", offset);
+                fmt::print("CLIENT TCP PORT: {0}\n", port);
+                break;
+            
+            case 105:
+                fmt::print("FACILITY NAME: {0}\n", facilityName);
+                break;
+
+            case 106:
+                fmt::print("UID: {0}\n", uid);
+                fmt::print("LENGTH OFFSET: {0}\n", offset);
+                break;
+            
+            case 107:
+                break;
+            
+            default:
+                break;
+        }
+        fmt::print("========================================================\n");
+    } 
 }; 
 
 struct UnmarshalledReplyMessage {
@@ -354,7 +406,61 @@ struct UnmarshalledReplyMessage {
     uint32_t errorCode; //error code if revelant
     uint32_t capacity; //returns capacity, if relevant
     std::vector< std::string > facilityNames; // for op type '107'
-    std::vector<std::pair<Day, std::vector<hourminute>>> availabilities; 
+    std::vector<std::pair<Day, std::vector<hourminute>>> availabilities;
+
+    void fmt() {
+        fmt::print("REPLY SENT: \n");
+        fmt::print("=======================================================\n");
+
+        fmt::print("OPCODE: {0}\n", op);
+        fmt::print("ERROR CODE: {0}\n", errorCode);
+        switch (op) {
+            case 101:
+                if (errorCode != 100) {
+                    break;
+                }
+                for (auto sub : availabilities) {
+                    fmt::print("DAY: {}\n", dayToStr[sub.first]);
+                    fmt::print("-----------------\n");
+                    for (auto avail : sub.second) {
+                        hourminute t1 = timestampToHour(avail.first), t2 = timestampToHour(avail.second);
+                        fmt::print("{0}:{1}-{2}:{3}\n", t1.first, t1.second, t2.first, t2.second);
+                    }
+                }
+                break;
+
+            case 102:
+                if (errorCode == 100) {
+                    fmt::print("UID: {0}\n", uid);
+                }
+                break;
+            
+            case 103:
+                break;
+            
+            case 104:
+                break;
+            
+            case 105:
+                fmt::print("CAPACITY: {0}\n", capacity);
+                break;
+
+            case 106:
+                break;
+            
+            case 107:
+                fmt::print("FACILITY NAMES: \n");
+                for (auto f : facilityNames) {
+                    fmt::print("{} ", f);
+                }
+                fmt::print("\n");
+                break;
+            
+            default:
+                break;
+        }
+        fmt::print("========================================================\n");
+    }
 };
 
 
@@ -878,7 +984,9 @@ public:
             UnmarshalledRequestMessage localMsg = 
                 unmarshal( reinterpret_cast< MarshalledMessage* >(buffer) );
 
-            std::cout << "Request ID " << localMsg.reqID << std::endl;
+            //dump request
+            localMsg.fmt();
+            //plan maybe add a handler class here? handler class
             UnmarshalledReplyMessage localEgress;
             if (replyCache.find(localMsg.reqID) == replyCache.end() 
                 || semantics == InvocationSemantics::AT_LEAST_ONCE) {
@@ -922,6 +1030,8 @@ public:
                 replyCache[localMsg.reqID] = localEgress; //cache the reply for AT MOST ONCE
             }
 
+            //dump reply
+            localEgress.fmt();
             int totalMsgSize = 0; 
             MarshalledMessage* egressMsg = marshal(&localEgress, &totalMsgSize);
             memcpy(buffer, egressMsg, totalMsgSize);
