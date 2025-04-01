@@ -81,16 +81,6 @@ auto compareBookStruct = [](const bookStruct& a, const bookStruct& b) {
     return (a.second <= b.first);  
 };
 
-std::unordered_map<Day, std::string> dayToStr = {
-    {Day::Monday, "Monday"},
-    {Day::Tuesday, "Tuesday"},
-    {Day::Wednesday, "Wednesday"},
-    {Day::Thursday, "Thursday"},
-    {Day::Friday, "Friday"},
-    {Day::Saturday, "Saturday"},
-    {Day::Sunday, "Sunday"},
-};
-
 
 class Facility {
     std::string name;
