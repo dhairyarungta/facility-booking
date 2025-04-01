@@ -62,6 +62,27 @@ auto compareBookStruct = [](const bookStruct& a, const bookStruct& b) {
     return (a.second <= b.first);  
 };
 
+std::string dayToStr(Day day){
+    switch(day){
+        case Day::Monday:
+            return "Monday";
+        case Day::Tuesday:
+            return "Tuesday";
+        case Day::Wednesday:
+            return "Wednesday";
+        case Day::Thursday:
+            return "Thursday";
+        case Day::Friday:
+            return "Friday";
+        case Day::Saturday:
+            return "Saturday";
+        case Day::Sunday:
+            return "Sunday";
+        default:
+            return "Unknown";
+    }
+}
+
 class Facility {
     std::string name;
     int capacity;
@@ -358,14 +379,14 @@ struct UnmarshalledRequestMessage {
                 fmt::print("FACILITY NAME: {0}\n", facilityName); 
                 fmt::print("DAYS RECEIVED: ");
                 for (auto day : days) {
-                    fmt::print("{} ",dayToStr[day]);
+                    fmt::print("{} ",dayToStr(day));
                 }
                 fmt::print("\n");
                 break;
 
             case 102:
                 fmt::print("FACILITY NAME: {0}\n", facilityName);
-                fmt::print("DAY RECEIVED: {0}\n", dayToStr[days[0]]);
+                fmt::print("DAY RECEIVED: {0}\n", dayToStr(days[0]));
                 fmt::print("START TIME: {0}:{1}\n", startTime.first, startTime.second);
                 fmt::print("END TIME: {0}:{1}\n", endTime.first, endTime.second);
                 break;
@@ -420,11 +441,10 @@ struct UnmarshalledReplyMessage {
                     break;
                 }
                 for (auto sub : availabilities) {
-                    fmt::print("DAY: {}\n", dayToStr[sub.first]);
+                    fmt::print("DAY: {}\n", dayToStr(sub.first));
                     fmt::print("-----------------\n");
-                    for (auto avail : sub.second) {
-                        hourminute t1 = timestampToHour(avail.first), t2 = timestampToHour(avail.second);
-                        fmt::print("{0}:{1}-{2}:{3}\n", t1.first, t1.second, t2.first, t2.second);
+                    for (unsigned i = 0; i < sub.second.size(); i+=2) {
+                        fmt::print("{0}:{1}-{2}:{3}\n", sub.second[i].first, sub.second[i].second, sub.second[i+1].first, sub.second[i+1].second);
                     }
                 }
                 break;
