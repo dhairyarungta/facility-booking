@@ -71,26 +71,16 @@ auto compareBookStruct = [](const bookStruct& a, const bookStruct& b) {
     return (a.second <= b.first);  
 };
 
-std::string dayToStr(Day day){
-    switch(day){
-        case Day::Monday:
-            return "Monday";
-        case Day::Tuesday:
-            return "Tuesday";
-        case Day::Wednesday:
-            return "Wednesday";
-        case Day::Thursday:
-            return "Thursday";
-        case Day::Friday:
-            return "Friday";
-        case Day::Saturday:
-            return "Saturday";
-        case Day::Sunday:
-            return "Sunday";
-        default:
-            return "Unknown";
-    }
-}
+std::unordered_map<Day, std::string> dayToStr = {
+    {Day::Monday, "Monday"},
+    {Day::Tuesday, "Tuesday"},
+    {Day::Wednesday, "Wednesday"},
+    {Day::Thursday, "Thursday"},
+    {Day::Friday, "Friday"},
+    {Day::Saturday, "Saturday"},
+    {Day::Sunday, "Sunday"},
+};
+
 
 class Facility {
     std::string name;
@@ -380,14 +370,14 @@ struct UnmarshalledRequestMessage {
                 fmt::print("FACILITY NAME: {0}\n", facilityName); 
                 fmt::print("DAYS RECEIVED: ");
                 for (auto day : days) {
-                    fmt::print("{} ",dayToStr(day));
+                    fmt::print("{} ",dayToStr[day]);
                 }
                 fmt::print("\n");
                 break;
 
             case 102:
                 fmt::print("FACILITY NAME: {0}\n", facilityName);
-                fmt::print("DAY RECEIVED: {0}\n", dayToStr(days[0]));
+                fmt::print("DAY RECEIVED: {0}\n", dayToStr[days[0]]);
                 fmt::print("START TIME: {0}:{1}\n", startTime.first, startTime.second);
                 fmt::print("END TIME: {0}:{1}\n", endTime.first, endTime.second);
                 break;
@@ -442,7 +432,7 @@ struct UnmarshalledReplyMessage {
                     break;
                 }
                 for (auto sub : availabilities) {
-                    fmt::print("DAY: {}\n", dayToStr(sub.first));
+                    fmt::print("DAY: {}\n", dayToStr[sub.first]);
                     fmt::print("-----------------\n");
                     for (auto avail : sub.second) {
                         hourminute t1 = timestampToHour(avail.first), t2 = timestampToHour(avail.second);
