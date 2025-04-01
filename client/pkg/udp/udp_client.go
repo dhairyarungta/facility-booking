@@ -95,7 +95,7 @@ func (client *UdpClient) WatchMessage( message utils.UnMarshalledRequestMessage,
 	timer := time.NewTimer(time.Minute * time.Duration(watchInterval))
 	connChannel := make(chan net.Conn)
 	errChannel := make(chan error)
-	done := make(chan struct{})
+	done := make(chan struct{},1)
 	defer close(connChannel)
 	defer close(errChannel)
 	go func(){
@@ -106,7 +106,9 @@ func (client *UdpClient) WatchMessage( message utils.UnMarshalledRequestMessage,
 			default:
 				conn, err = tcpListener.Accept()
 				if err != nil {
-					errChannel <- err
+					if !errors.Is(err,net.ErrClosed){
+						errChannel <- err
+					}
 					return 
 				}
 				connChannel <- conn
@@ -118,6 +120,7 @@ func (client *UdpClient) WatchMessage( message utils.UnMarshalledRequestMessage,
 		case <-timer.C:
 			fmt.Println("timer has completed")
 			done<- struct{}{}
+			tcpListener.Close()
 			return nil
 		case newConn := <-connChannel:
 			go func(conn net.Conn) {
