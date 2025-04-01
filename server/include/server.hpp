@@ -45,6 +45,16 @@ enum class Day : char {
     Sunday
 };
 
+std::unordered_map<Day, std::string> dayToStr = {
+    {Day::Monday, "Monday"},
+    {Day::Tuesday, "Tuesday"},
+    {Day::Wednesday, "Wednesday"},
+    {Day::Thursday, "Thursday"},
+    {Day::Friday, "Friday"},
+    {Day::Saturday, "Saturday"},
+    {Day::Sunday, "Sunday"},
+};
+
 InvocationSemantics stringToInvocationSemantics (std::string s) {
     if ( s == std::string_view{"AT_LEAST_ONCE"} ) {
         return InvocationSemantics::AT_LEAST_ONCE;
