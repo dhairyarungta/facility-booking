@@ -509,6 +509,8 @@ class Server {
     std::unordered_map<std::string, std::set<CallbackInfo>> callbackMap;
     // facility_name,  Callbackinfo
 
+    bool testMode;
+    // test mode for simulation
     void query_request_handle (UnmarshalledRequestMessage& msg, char* payload, 
         int payloadLen) {
         
@@ -752,8 +754,8 @@ class Server {
     }
 
 public:
-    Server(std::unordered_map<std::string,Facility>& facilities, InvocationSemantics semantics) 
-        : facilities(facilities), semantics(semantics) {}
+    Server(std::unordered_map<std::string,Facility>& facilities, InvocationSemantics semantics, bool testMode) 
+        : facilities(facilities), semantics(semantics), testMode(testMode) {}
 
     void handleQuery(UnmarshalledRequestMessage& msg, UnmarshalledReplyMessage& replyMsg) {
         replyMsg.op = 101;
@@ -984,6 +986,7 @@ public:
 
         const char* ack = "ACK";
         bool duplicate = false;
+        uint32_t failedCount = 0;
         while (true) {
             duplicate = false;
             socklen_t len = sizeof(client_addr);
@@ -997,6 +1000,10 @@ public:
                 inet_ntoa(client_addr.sin_addr) << ":" << 
                 ntohs(client_addr.sin_port) << "\n";
 
+            if (testMode && failedCount == 0) {
+                failedCount++;
+                continue; //drop first request
+            }
             sendto(sockfd, ack, 3, 0, (struct sockaddr *)&client_addr, len);  
             //server sends ACK to client for at least once invocation semantics
 
@@ -1051,6 +1058,15 @@ public:
 
             //dump reply
             localEgress.fmt();
+            if (testMode && failedCount < 3 && (localEgress.op == 106 || localEgress.op == 107)) {
+                failedCount++;
+                if ( localEgress.errorCode == 100 &&  
+                    ( localMsg.op == 102 || localMsg.op == 103 || localMsg.op == 106 ) && !duplicate) {
+                    triggerCallback(tcpsock, localMsg, localEgress);
+                }
+                continue;
+            }
+            if (testMode) failedCount = 0;
             int totalMsgSize = 0; 
             MarshalledMessage* egressMsg = marshal(&localEgress, &totalMsgSize);
             memcpy(buffer, egressMsg, totalMsgSize);

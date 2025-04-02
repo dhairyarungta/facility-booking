@@ -39,12 +39,12 @@ int main(){
 
         if (option == 1) {
             semantics = InvocationSemantics::AT_LEAST_ONCE;
-            Server n_server(facilities, semantics);
+            Server n_server(facilities, semantics, false);
             n_server.serve();
         }
         else if (option == 2) {
             semantics = InvocationSemantics::AT_MOST_ONCE;
-            Server n_server(facilities, semantics);
+            Server n_server(facilities, semantics, false);
             n_server.serve();
         }
         else {

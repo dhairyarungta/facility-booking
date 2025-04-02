@@ -13,10 +13,10 @@ import (
 )
 
 const (
-	DefaultHostAddr     = "localhost:3000"
-	DefaultTimeout      = 10
-	DefaultRetransmit   = true
-	DefaultMaxRetries   = 3
+	DefaultHostAddr      = "localhost:3000"
+	DefaultTimeout       = 60
+	DefaultRetransmit    = true
+	DefaultMaxRetries    = 5
 	DefaultWatchInterval = 10
 	DefaultAckTimeout    = 5
 )
@@ -58,7 +58,7 @@ func printHelp() {
 func main() {
 	client := udp.NewUdpClient(DefaultHostAddr)
 	scanner := bufio.NewScanner(os.Stdin)
-	uuidRand , err := uuid.NewRandom()
+	uuidRand, err := uuid.NewRandom()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating UUID: %v\n", err)
 		os.Exit(1)
@@ -222,7 +222,7 @@ func main() {
 			}
 
 			fmt.Printf("Modifying booking %d by %d minutes...\n", bookingId, offset)
-			fmt.Printf("Request Id %v",reqId)
+			fmt.Printf("Request Id %v", reqId)
 			reply, err := client.SendMessage(msg, DefaultTimeout, DefaultRetransmit, DefaultMaxRetries)
 			if err != nil {
 				fmt.Printf("Error: %v\n", err)
@@ -258,7 +258,7 @@ func main() {
 			}
 
 			fmt.Printf("Extending booking %d by %d minutes...\n", bookingId, additionalMinutes)
-			fmt.Printf("Request Id %v",reqId)
+			fmt.Printf("Request Id %v", reqId)
 			reply, err := client.SendMessage(msg, DefaultTimeout, DefaultRetransmit, DefaultMaxRetries)
 			if err != nil {
 				fmt.Printf("Error: %v\n", err)
@@ -266,7 +266,7 @@ func main() {
 			}
 
 			utils.FormatReplyMessage(reply)
-			
+
 			reqId++
 
 		case "watch":
