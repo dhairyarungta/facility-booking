@@ -883,7 +883,14 @@ public:
 
     void triggerCallback(int& sockfd, const UnmarshalledRequestMessage& reqMsg, 
         const UnmarshalledReplyMessage& replyMsg) {
-        const std::string& facilityName = reqMsg.facilityName;
+        uint32_t uid;
+        if (reqMsg.op == 102) {
+            uid = replyMsg.uid;
+        }
+        else {
+            uid = reqMsg.uid;
+        }
+        const std::string& facilityName = bookings[uid].first.first;
         if (callbackMap.contains(facilityName) == false){
         return;
         }
