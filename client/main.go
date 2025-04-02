@@ -222,7 +222,6 @@ func main() {
 			}
 
 			fmt.Printf("Modifying booking %d by %d minutes...\n", bookingId, offset)
-			fmt.Printf("Request Id %v", reqId)
 			reply, err := client.SendMessage(msg, DefaultTimeout, DefaultRetransmit, DefaultMaxRetries)
 			if err != nil {
 				fmt.Printf("Error: %v\n", err)
@@ -258,7 +257,6 @@ func main() {
 			}
 
 			fmt.Printf("Extending booking %d by %d minutes...\n", bookingId, additionalMinutes)
-			fmt.Printf("Request Id %v", reqId)
 			reply, err := client.SendMessage(msg, DefaultTimeout, DefaultRetransmit, DefaultMaxRetries)
 			if err != nil {
 				fmt.Printf("Error: %v\n", err)
