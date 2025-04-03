@@ -81,6 +81,7 @@ int main(int argc, char* argv[]){
         }
         else {
             fmt::print("Wrong input, please retry.\n");
+            return 1;
         }
     }
     return 0;
