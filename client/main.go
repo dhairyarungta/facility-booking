@@ -21,10 +21,14 @@ const (
 	DefaultAckTimeout    = 5
 )
 
+var serverAddr string = DefaultHostAddr
+
 func printHelp() {
 	fmt.Println("Facility Booking Client")
 	fmt.Println("=======================")
 	fmt.Println("Commands:")
+	fmt.Println("  setserver <ip_address:port>")
+    fmt.Println("      - Set the server IP address and port")
 	fmt.Println("  query <facility_name> [day1 day2...]")
 	fmt.Println("      - Query facility availability. Days are 0-6 (0=Monday)")
 	fmt.Println("      - If no days provided, queries all days")
@@ -56,7 +60,7 @@ func printHelp() {
 }
 
 func main() {
-	client := udp.NewUdpClient(DefaultHostAddr)
+	client := udp.NewUdpClient(serverAddr)
 	scanner := bufio.NewScanner(os.Stdin)
 	uuidRand, err := uuid.NewRandom()
 	if err != nil {
@@ -88,6 +92,17 @@ func main() {
 		cmd := strings.ToLower(args[0])
 
 		switch cmd {
+
+		case "setserver":
+			if len(args) < 2 {
+				fmt.Println("Usage: setserver <ip_address:port>")
+				continue
+			}
+			serverAddr = args[1]
+			client = udp.NewUdpClient(serverAddr)
+			fmt.Printf("Server address set to: %s\n", serverAddr)
+			reqId++
+
 		case "help":
 			printHelp()
 
