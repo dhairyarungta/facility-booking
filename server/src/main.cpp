@@ -16,9 +16,9 @@ int main(int argc, char* argv[]){
     
     //bool_swtich sets the vlaue to "true", always
     desc.add_options()
-        ("atmost,am", po::bool_switch(&atMost), 
+        ("atmost,a", po::bool_switch(&atMost), 
             "Use at-most semantics")
-        ("atleast,al", po::bool_switch(&atLeast) ,
+        ("atleast,l", po::value<bool>(&atLeast)->default_value(true),
             "Use at-least semantics (default)")
         ("failure,f", po::bool_switch(&simulateFailure), 
             "Simulate Ack drop by server");
@@ -60,29 +60,22 @@ int main(int argc, char* argv[]){
         facilities.emplace(facility.getName(), facility);
     }
 
-    fmt::print("Welcome to the SC4051 Server\n"); 
-
-    while(true) {
-        // fmt::print("Choose Server start mode\n 1. At Least Once\n 2. At Most Once\n");
-        // fmt::print("Enter your choice, 1 or 2:\n");
-        // std::cin >> option;
-
-        InvocationSemantics semantics = InvocationSemantics::AT_MOST_ONCE; 
-
-        if (atMost == true) {
-            semantics = InvocationSemantics::AT_MOST_ONCE;
-            Server n_server(facilities, semantics, simulateFailure);
-            n_server.serve();
-        }
-        else if (atLeast == true) {
-            semantics = InvocationSemantics::AT_LEAST_ONCE;
-            Server n_server(facilities, semantics, simulateFailure);
-            n_server.serve();
-        }
-        else {
-            fmt::print("Wrong input, please retry.\n");
-            return 1;
-        }
+    if (atMost == true) {
+        fmt::print("Welcome to the SC4051 Server\n"); 
+        fmt::print("Running with At Most Once Invocation Semantics\n"); 
+        Server n_server(facilities,  InvocationSemantics::AT_MOST_ONCE, simulateFailure);
+        n_server.serve();
     }
+    else if (atLeast == true) {
+        fmt::print("Welcome to the SC4051 Server\n"); 
+        fmt::print("Running with At Least Once Invocation Semantics\n"); 
+        Server n_server(facilities,  InvocationSemantics::AT_LEAST_ONCE, simulateFailure);
+        n_server.serve();
+    }
+    else {
+        fmt::print("Wrong cli inputs input, please retry.\n");
+        return 1;
+    }
+
     return 0;
 }
